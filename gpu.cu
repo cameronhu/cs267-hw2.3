@@ -5,6 +5,13 @@
 
 // Put any static global variables here that you will use throughout the simulation.
 int blks;
+double boxSize1D = cutoff;
+int numBoxes1D;
+int numBoxesTotal;
+
+// boxes and particle_idx array pointers for GPU box storage
+int* boxes;
+int* particle_idx;
 
 __device__ void apply_force_gpu(particle_t& particle, particle_t& neighbor) {
     double dx = neighbor.x - particle.x;
@@ -72,6 +79,10 @@ void init_simulation(particle_t* parts, int num_parts, double size) {
     // Do not do any particle simulation here
 
     blks = (num_parts + NUM_THREADS - 1) / NUM_THREADS;
+    numBoxes1D = ceil(size / boxSize1D); // More boxes if the size doesn't fit perfectly
+    numBoxesTotal = numBoxes1D * numBoxes1D;
+    boxes = new int[numBoxesTotal];
+    particle_idx = new int[num_parts];
 }
 
 void simulate_one_step(particle_t* parts, int num_parts, double size) {
