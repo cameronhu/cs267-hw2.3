@@ -113,15 +113,16 @@ void assignToBoxes(particle_t* parts, int num_parts) {
     printf("Actual size of cpu_parts: %lu\n", actual_size);
     printf("Num particles in cpu_parts: %lu\n", actual_size / sizeof(particle_t));
     
-    // First pass: count particles in each box
+    // First pass: count particles in each box. Reset box counts from past iteration
+    memset(boxCounts, 0, totalBoxes * sizeof(int));
     for (int i = 0; i < num_parts; ++i) {
-        printf("cur parts idx: %i\n", i);
+        // printf("cur parts idx: %i\n", i);
         int boxIndex = findBox(cpu_parts[i]);
-        printf("boxIndex: %i\n", boxIndex);
+        // printf("boxIndex: %i\n", boxIndex);
         boxCounts[boxIndex]++;
     }
 
-    printf("Fin counting particles per box\n");
+    // printf("Fin counting particles per box\n");
 
     // Compute starting index for each box in particle_idx
     int prefixSum = 0;
@@ -131,7 +132,7 @@ void assignToBoxes(particle_t* parts, int num_parts) {
     }
     printf("Last value of prefix sums should be num_parts. prefixSums[-1]: %i. num_parts: %i\n", prefixSums[totalBoxes], num_parts);
 
-    printf("Fin calc starting particle_idx index for each box's first part\n");
+    // printf("Fin calc starting particle_idx index for each box's first part\n");
 
     // Reset box counts for use in the second pass
     memset(boxCounts, 0, totalBoxes * sizeof(int));
@@ -143,13 +144,13 @@ void assignToBoxes(particle_t* parts, int num_parts) {
         particle_ids[pos] = i;
         boxCounts[boxIndex]++;
     }
-    printf("Fin second pass to assign particles `parts` index to particle_ids in proper box order.\n");
+    // printf("Fin second pass to assign particles `parts` index to particle_ids in proper box order.\n");
 
     // Update boxes array: -1 if box has no particles
     for (int i = 0; i < totalBoxes; ++i) {
         boxes[i] = (boxCounts[i] > 0) ? prefixSums[i] : -1;
     }
-    printf("Updating `boxes` array with starting indices if box has particles.\n");
+    // printf("Updating `boxes` array with starting indices if box has particles.\n");
 }
 
 void init_simulation(particle_t* parts, int num_parts, double size) {
