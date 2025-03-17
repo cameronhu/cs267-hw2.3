@@ -169,7 +169,7 @@ void assignToBoxes(particle_t* parts, int num_parts) {
     // printf("Updating `boxes` array with starting indices if box has particles.\n");
     printf("prefixSums[0]: %i. prefixSums[totalBoxes]: %i\n", prefixSums[0], prefixSums[totalBoxes]);
     printf("Num empty boxes: %i. Num boxes w/ particles: %i. Num particles: %i. Average particles per box: %f\n", 
-        numEmpty, numFilled, partCount, numFilled/partCount);
+        numEmpty, numFilled, partCount, (double)(partCount / numFilled));
 
     // ================ Copy all CPU arrays to mirrored GPU arrays ================
 
