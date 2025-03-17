@@ -1,11 +1,9 @@
 #include "common.h"
 #include <cuda.h>
+#include <stdio.h>
 
 #define NUM_THREADS 256
 #define INDEX(row, col) ((row) * numBoxes1D + (col))
-
-// Flush std::out buffers immediately
-setbuf(stdout, NULL);
 
 // Put any static global variables here that you will use throughout the simulation.
 int blks;
@@ -98,6 +96,8 @@ __global__ void move_gpu(particle_t* particles, int num_parts, double size) {
 }
 
 void assignToBoxes(particle_t* parts, int num_parts) {
+    setbuf(stdout, NULL);
+
     // Initialize box counts
     int* box_counts = new int[numBoxesTotal]();
     
@@ -107,7 +107,7 @@ void assignToBoxes(particle_t* parts, int num_parts) {
         box_counts[curr_box_idx]++;
     }
 
-
+    printf("Fin counting particles per box\n");
 
     // Compute starting index for each box in particle_idx
     int* box_start_idx = new int[numBoxesTotal];
@@ -116,6 +116,8 @@ void assignToBoxes(particle_t* parts, int num_parts) {
         box_start_idx[i] = idx;
         idx += box_counts[i];
     }
+
+    printf("Fin calc starting particle_idx index for each box's first part\n");
 
     // Reset box counts for use in the second pass
     memset(box_counts, 0, numBoxesTotal * sizeof(int));
@@ -127,11 +129,14 @@ void assignToBoxes(particle_t* parts, int num_parts) {
         particle_idx[pos] = i;
         box_counts[curr_box_idx]++;
     }
+    printf("Fin second pass to assign particles `parts` index to particle_id in proper box order.\n");
+
 
     // Update boxes array: -1 if box has no particles
     for (int i = 0; i < numBoxesTotal; ++i) {
         boxes[i] = (box_counts[i] > 0) ? box_start_idx[i] : -1;
     }
+    printf("Updating `boxes` array with starting indices if box has particles.\n");
 
     // Clean up
     delete[] box_counts;
