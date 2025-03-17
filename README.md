@@ -1,0 +1,5 @@
+# CUDA Parallel Particle Simulation
+
+## Overview
+
+On the GPU exists the full set of the particles in the `particle_t* parts` array. In order to segment `parts` into boxes, I will utilize two arrays. The first array is  `int* particle_idx`, and it stores the indices of the particles needed to access them from `parts`. `particle_idx` stores the particle indices in order of the boxes that they are assigned to. To know the boundaries of each box, we have another `int* boxes` array, and each value stored at `boxes[i]` is the starting index in`particle_idx` of the particles that are stored within box[i]. For example, `boxes[0] = 0`, meaning the first particles of box 0 start at index 0 of `particle_idx`. Then, perhaps `boxes[1] = 2`, meaning the particles starting at idx 2 in `particle_idx` are stored in box 1.
