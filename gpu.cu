@@ -9,9 +9,18 @@ double boxSize1D = cutoff;
 int numBoxes1D;
 int numBoxesTotal;
 
-// boxes and particle_idx array pointers for GPU box storage
+/**
+* Array pointers for boxes and particle_idx
+*/
+
+// CPU arrays
 int* boxes;
 int* particle_idx;
+
+// GPU arrays
+int* gpu_boxes;
+int* gpu_particle_idx;
+
 
 __device__ void apply_force_gpu(particle_t& particle, particle_t& neighbor) {
     double dx = neighbor.x - particle.x;
@@ -78,11 +87,21 @@ void init_simulation(particle_t* parts, int num_parts, double size) {
     // parts live in GPU memory
     // Do not do any particle simulation here
 
+    // Assign global variables
     blks = (num_parts + NUM_THREADS - 1) / NUM_THREADS;
-    numBoxes1D = ceil(size / boxSize1D); // More boxes if the size doesn't fit perfectly
+    numBoxes1D = ceil(size / boxSize1D);
     numBoxesTotal = numBoxes1D * numBoxes1D;
+
+    // Allocate memory for CPU-side arrays
     boxes = new int[numBoxesTotal];
     particle_idx = new int[num_parts];
+
+    // Allocate memory for GPU-side arrays and copy from CPU-side arrays
+    cudaMalloc((void**)&gpu_boxes, numBoxesTotal * sizeof(int));
+    cudaMemcpy(gpu_boxes, boxes, numBoxesTotal * sizeof(int), cudaMemcpyHostToDevice);
+
+    cudaMalloc((void**)&gpu_particle_idx, num_parts * sizeof(int));
+    cudaMemcpy(gpu_particle_idx, particle_idx, num_parts * sizeof(int), cudaMemcpyHostToDevice);
 }
 
 void simulate_one_step(particle_t* parts, int num_parts, double size) {
