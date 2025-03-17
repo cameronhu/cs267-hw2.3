@@ -10,7 +10,8 @@ int blks;
 double boxSize1D = cutoff;
 int numBoxes1D;
 int totalBoxes;
-
+size_t boxesMemSize;
+size_t prefixMemSize;
 
 // ============ Array pointers for boxes and particle_idx ============
 
@@ -114,7 +115,7 @@ void assignToBoxes(particle_t* parts, int num_parts) {
     printf("Num particles in cpu_parts: %lu\n", actual_size / sizeof(particle_t));
     
     // First pass: count particles in each box. Reset box counts from past iteration
-    memset(boxCounts, 0, totalBoxes * sizeof(int));
+    memset(boxCounts, 0, boxesMemSize);
     for (int i = 0; i < num_parts; ++i) {
         // printf("cur parts idx: %i\n", i);
         int boxIndex = findBox(cpu_parts[i]);
@@ -129,13 +130,14 @@ void assignToBoxes(particle_t* parts, int num_parts) {
     for (int boxIndex = 0; boxIndex <= totalBoxes; ++boxIndex) {
         prefixSums[boxIndex] = prefixSum;
         prefixSum += boxCounts[boxIndex];
+        // printf("%i\n", boxCounts[boxIndex]);
     }
-    printf("Last value of prefix sums should be num_parts. prefixSums[-1]: %i. num_parts: %i\n", prefixSums[totalBoxes], num_parts);
+    // printf("Last value of prefix sums should be num_parts. prefixSums[-1]: %i. num_parts: %i\n", prefixSums[totalBoxes], num_parts);
 
     // printf("Fin calc starting particle_idx index for each box's first part\n");
 
     // Reset box counts for use in the second pass
-    memset(boxCounts, 0, totalBoxes * sizeof(int));
+    memset(boxCounts, 0, boxesMemSize);
 
     // Second pass: assign particles to particle_idx and update boxes
     for (int i = 0; i < num_parts; ++i) {
@@ -147,10 +149,30 @@ void assignToBoxes(particle_t* parts, int num_parts) {
     // printf("Fin second pass to assign particles `parts` index to particle_ids in proper box order.\n");
 
     // Update boxes array: -1 if box has no particles
+    // for (int i = 0; i < totalBoxes; ++i) {
+    //     boxes[i] = (boxCounts[i] > 0) ? prefixSums[i] : -1;
+    // }
+    int numEmpty = 0;
+    int numFilled = 0;
+    int partCount = 0;
     for (int i = 0; i < totalBoxes; ++i) {
-        boxes[i] = (boxCounts[i] > 0) ? prefixSums[i] : -1;
+        prefixSums[i] = (boxCounts[i] > 0) ? prefixSums[i] : -1;
+        if (boxCounts[i] == 0) {
+            // printf("Check for empty box %i. prefixSums[%i]: %i\n", i, i, prefixSums[i]);
+            numEmpty += 1;
+        }
+        else {
+            numFilled += 1;
+            partCount += boxCounts[i];
+        }
     }
     // printf("Updating `boxes` array with starting indices if box has particles.\n");
+    printf("prefixSums[0]: %i. prefixSums[totalBoxes]: %i\n", prefixSums[0], prefixSums[totalBoxes]);
+    printf("Num empty boxes: %i. Num boxes w/ particles: %i. Num particles: %i. Average particles per box: %f\n", 
+        numEmpty, numFilled, partCount, numFilled/partCount);
+
+    // ================ Copy all CPU arrays to mirrored GPU arrays ================
+
 }
 
 void init_simulation(particle_t* parts, int num_parts, double size) {
@@ -164,23 +186,25 @@ void init_simulation(particle_t* parts, int num_parts, double size) {
     blks = (num_parts + NUM_THREADS - 1) / NUM_THREADS;
     numBoxes1D = ceil(size / boxSize1D);
     totalBoxes = numBoxes1D * numBoxes1D;
+    boxesMemSize = totalBoxes * sizeof(int);
+    prefixMemSize = (totalBoxes + 1) * sizeof(int);
 
     // Allocate memory for CPU-side arrays
     boxCounts = new int[totalBoxes]();
-    prefixSums = new int[totalBoxes];
+    prefixSums = new int[totalBoxes + 1];
     particle_ids = new int[num_parts];
     boxes = new int[totalBoxes];
 
     // Allocate memory for GPU-side arrays and copy from CPU-side arrays
-    cudaMalloc((void**)&gpu_boxCounts, totalBoxes * sizeof(int));
-    cudaMemset(gpu_boxCounts, 0, totalBoxes * sizeof(int));
-    // cudaMemcpy(gpu_boxCounts, boxCounts, totalBoxes * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&gpu_boxCounts, boxesMemSize);
+    cudaMemset(gpu_boxCounts, 0, boxesMemSize);
+    // cudaMemcpy(gpu_boxCounts, boxCounts, boxesMemSize, cudaMemcpyHostToDevice);
 
-    cudaMalloc((void**)&gpu_prefixSums, totalBoxes * sizeof(int));
+    cudaMalloc((void**)&gpu_prefixSums, prefixMemSize);
 
     cudaMalloc((void**)&gpu_particle_ids, num_parts * sizeof(int));
 
-    cudaMalloc((void**)&gpu_boxes, totalBoxes * sizeof(int));
+    cudaMalloc((void**)&gpu_boxes, boxesMemSize);
     printf("Numboxes1d: %i. totalBoxes: %i\n", numBoxes1D, totalBoxes);
 }
 
