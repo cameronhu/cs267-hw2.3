@@ -4,6 +4,10 @@
 #define NUM_THREADS 256
 
 // Put any static global variables here that you will use throughout the simulation.
+static int* boxCounts // # of boxes create for simulation space
+static int* prefixSums // prefix sum of the box counts
+static int* particle_ids // container that holds particle ids
+// static particle_t* ______ // may use this for better memory access by reordering parts_gpu
 int blks;
 
 __device__ void apply_force_gpu(particle_t& particle, particle_t& neighbor) {
@@ -72,6 +76,13 @@ void init_simulation(particle_t* parts, int num_parts, double size) {
     // Do not do any particle simulation here
 
     blks = (num_parts + NUM_THREADS - 1) / NUM_THREADS;
+
+    numBoxes1D = (int) ceil(size / cutoff);
+    totalBoxes = numBoxes1D * numBoxes1D
+    
+    cudaMalloc(&boxCounts, totalBoxes * sizeof(int));
+    cudaMalloc(&prefixSums, (totalBoxes + 1) * sizeof(int)); // prefix sums will have size of boxCounts + 1, seen in recitation
+    cudaMalloc(&particle_ids, num_parts * sizeof(int)); 
 }
 
 void simulate_one_step(particle_t* parts, int num_parts, double size) {
