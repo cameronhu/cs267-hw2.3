@@ -2,6 +2,10 @@
 #include <cuda.h>
 
 #define NUM_THREADS 256
+#define INDEX(row, col) ((row) * numBoxes1D + (col))
+
+// Flush std::out buffers immediately
+setbuf(stdout, NULL);
 
 // Put any static global variables here that you will use throughout the simulation.
 int blks;
@@ -9,9 +13,8 @@ double boxSize1D = cutoff;
 int numBoxes1D;
 int numBoxesTotal;
 
-/**
-* Array pointers for boxes and particle_idx
-*/
+
+// ============ Array pointers for boxes and particle_idx ============
 
 // CPU arrays
 int* boxes;
@@ -20,6 +23,19 @@ int* particle_idx;
 // GPU arrays
 int* gpu_boxes;
 int* gpu_particle_idx;
+
+// =================
+// Helper Functions
+// =================
+
+/**
+* Helper function to calculate the box index of a given particle
+*/
+int findBox(const particle_t& p) {
+    int box_x = floor(p.x / boxSize1D);
+    int box_y = floor(p.y / boxSize1D);
+    return INDEX(box_x, box_y);
+}
 
 
 __device__ void apply_force_gpu(particle_t& particle, particle_t& neighbor) {
@@ -81,6 +97,47 @@ __global__ void move_gpu(particle_t* particles, int num_parts, double size) {
     }
 }
 
+void assignToBoxes(particle_t* parts, int num_parts) {
+    // Initialize box counts
+    int* box_counts = new int[numBoxesTotal]();
+    
+    // First pass: count particles in each box
+    for (int i = 0; i < num_parts; ++i) {
+        int curr_box_idx = findBox(parts[i]);
+        box_counts[curr_box_idx]++;
+    }
+
+
+
+    // Compute starting index for each box in particle_idx
+    int* box_start_idx = new int[numBoxesTotal];
+    int idx = 0;
+    for (int i = 0; i < numBoxesTotal; ++i) {
+        box_start_idx[i] = idx;
+        idx += box_counts[i];
+    }
+
+    // Reset box counts for use in the second pass
+    memset(box_counts, 0, numBoxesTotal * sizeof(int));
+
+    // Second pass: assign particles to particle_idx and update boxes
+    for (int i = 0; i < num_parts; ++i) {
+        int curr_box_idx = findBox(parts[i]);
+        int pos = box_start_idx[curr_box_idx] + box_counts[curr_box_idx];
+        particle_idx[pos] = i;
+        box_counts[curr_box_idx]++;
+    }
+
+    // Update boxes array: -1 if box has no particles
+    for (int i = 0; i < numBoxesTotal; ++i) {
+        boxes[i] = (box_counts[i] > 0) ? box_start_idx[i] : -1;
+    }
+
+    // Clean up
+    delete[] box_counts;
+    delete[] box_start_idx;
+}
+
 void init_simulation(particle_t* parts, int num_parts, double size) {
     // You can use this space to initialize data objects that you may need
     // This function will be called once before the algorithm begins
@@ -107,6 +164,9 @@ void init_simulation(particle_t* parts, int num_parts, double size) {
 void simulate_one_step(particle_t* parts, int num_parts, double size) {
     // parts live in GPU memory
     // Rewrite this function
+
+    // Assign all particles to boxes
+    assignToBoxes(parts, num_parts);
 
     // Compute forces
     compute_forces_gpu<<<blks, NUM_THREADS>>>(parts, num_parts);
