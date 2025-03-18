@@ -162,7 +162,7 @@ __global__ void countParticlesPerBox(particle_t* gpu_parts, int num_parts, int* 
         return;
 
     int boxIndex = findBox(gpu_parts[tid], numBoxes1D, boxSize1D);
-    printf("cur parts idx: %i. boxIndex: %i. Coords: (%f, %f)\n", tid, boxIndex, gpu_parts[tid].x, gpu_parts[tid].y);
+    // printf("cur parts idx: %i. boxIndex: %i. Coords: (%f, %f)\n", tid, boxIndex, gpu_parts[tid].x, gpu_parts[tid].y);
     gpu_boxCounts[boxIndex]++;
 }
 
@@ -215,17 +215,24 @@ void assignToBoxes(particle_t* parts, int num_parts, int* gpu_boxCounts) {
 
     // Copy from parts (gpu_parts) to cpu_parts
     particle_t* cpu_parts = new particle_t[num_parts];
-    cudaMemcpy(cpu_parts, parts, num_parts * sizeof(particle_t), cudaMemcpyDeviceToHost);    
+    cudaMemcpy(cpu_parts, parts, particle_idMemSize, cudaMemcpyDeviceToHost);    
 
     // First pass: count particles in each box. Reset box counts from past iteration
     cudaMemset(gpu_boxCounts, 0, boxesMemSize);
     countParticlesPerBox<<<blks, NUM_THREADS>>>(parts, num_parts, gpu_boxCounts, numBoxes1D, boxSize1D);
-    // Use thrust to calculate the sum of all values in gpu_boxCounts
-    thrust::device_ptr<int> dev_ptr(gpu_boxCounts);
-    int totalParticles = thrust::reduce(dev_ptr, dev_ptr + totalBoxes, 0, thrust::plus<int>());
-    printf("Total particles in all boxes: %d\n", totalParticles);
 
-    // Compute starting index for each box in particle_idx
+    //
+    // // TEST countParticlesPerBox
+    // // Use thrust to calculate the sum of all values in gpu_boxCounts
+    // thrust::device_ptr<int> dev_ptr(gpu_boxCounts);
+    // int totalParticles = thrust::reduce(dev_ptr, dev_ptr + totalBoxes, 0, thrust::plus<int>());
+    // printf("Total particles in all boxes: %d\n", totalParticles);
+    //
+
+    // Copy gpu_boxCounts to CPU, use for computePrefixSum
+    cudaMemcpy(boxCounts, gpu_boxCounts, boxesMemSize, cudaMemcpyDeviceToHost);
+
+    // Compute starting index for each box in particle_idx from boxCounts
     computePrefixSum();
 
     populateParticleID(cpu_parts, num_parts);
