@@ -18,14 +18,9 @@ In each simulation step, I call the `compute_forces_gpu` CUDA kernel, which assi
 
 For each particle, I call the `apply_force_from_neighbor_gpu` CUDA kernel for each of the neighboring boxes. Currently the calling of this neighbor forces kernel is loop unrolled, but need to profile and check if this provides actual performance improvements. The `apply_force_from_neighbor_gpu` iterates through all particles in the neighboring box, and calls the given `apply_force_gpu` kernel to apply forces from the neighbor particle to thisParticle.
 
-## Errors
+## GPU assignToBoxes
 
-Currently, not passing correctness check. Upon analysis of the GIF: ![1000_gpu_incorrect](outputs/1000_gpu.gif)
-
-One can see certain particles pass through others, not registering them as neighbors. Need to debug either:
-
-- box assignment
-- iterating through neighbor boxes and all particles from neighbor boxes
+The idea is to parallelize counting the number of particles per box, computation of the prefix sum, and assignment of `parts` indices to `particle_ids` through the GPU. Each thread will have access to the shared `gpu_boxCounts`, `gpu_prefixSums`, and `gpu_particle_ids` arrays. Atomic operations for adding in `gpu_boxCounts` will be necessary to prevent race conditions. Need to explore the best method for computing a prefixSum on the GPU: probably `thrust::exclusive_scan`.
 
 ## Useful Commands
 
