@@ -34,26 +34,22 @@ int* gpu_boxes;
 // =================
 
 // Calculate the box row of the particle
-__device__ __host__ int findRow(const particle_t& p, int boxSize1D) {
-    // return floor(p.y / boxSize1D);
-    return floor(p.x / boxSize1D);
+__device__ __host__ int findRow(const particle_t& p, double boxSize1D) {
+    return floor(p.y / boxSize1D);
 }
 
 // Calculate the box column of the particle
-__device__ __host__ int findCol(const particle_t& p, int boxSize1D) {
-    // return floor(p.x / boxSize1D);
-    return floor(p.y / boxSize1D);
+__device__ __host__ int findCol(const particle_t& p, double boxSize1D) {
+    return floor(p.x / boxSize1D);
 }
 
 /**
 * Helper function to calculate the box index of a given particle
 */
-__device__ __host__ int findBox(const particle_t& p, int numBoxes1D, int boxSize1D) {
-    // int col = floor(p.x / boxSize1D);
-    // int row = floor(p.y / boxSize1D);
-    int box_x = floor(p.x / boxSize1D);
-    int box_y = floor(p.y / boxSize1D);
-    return INDEX(box_x, box_y);
+__device__ __host__ int findBox(const particle_t& p, int numBoxes1D, double boxSize1D) {
+    int col = floor(p.x / boxSize1D);
+    int row = floor(p.y / boxSize1D);
+    return INDEX(row, col);
 }
 
 __device__ void apply_force_gpu(particle_t& particle, particle_t& neighbor) {
@@ -105,10 +101,9 @@ __global__ void compute_forces_gpu(particle_t* particles, int num_parts, int* pa
         return;
 
     // Access through particle_ids array for coalesced memory access
-    // TODO: check indexing through original particles array
+    // TODO: check indexing through particle_ids array
     // int parts_idx = particle_ids[tid];
     // particle_t& thisParticle = particles[parts_idx];
-
     particle_t& thisParticle = particles[tid];
     thisParticle.ax = thisParticle.ay = 0;
     int row = findRow(thisParticle, boxSize1D);
@@ -174,9 +169,7 @@ void computePrefixSum() {
     int prefixSum = 0;
     for (int boxIndex = 0; boxIndex <= totalBoxes; ++boxIndex) {
         prefixSums[boxIndex] = prefixSum;
-        if (boxCounts[boxIndex] > 0) {
-            prefixSum += boxCounts[boxIndex];
-        }
+        prefixSum += boxCounts[boxIndex];
         // printf("%i\n", boxCounts[boxIndex]);
     }
 }
@@ -256,6 +249,7 @@ void init_simulation(particle_t* parts, int num_parts, double size) {
     totalBoxes = numBoxes1D * numBoxes1D;
     boxesMemSize = totalBoxes * sizeof(int);
     prefixMemSize = (totalBoxes + 1) * sizeof(int);
+    //particle_idMemSize = num_parts * sizeof(particle_t);
     particle_idMemSize = num_parts * sizeof(int);
 
     // Allocate memory for CPU-side arrays
