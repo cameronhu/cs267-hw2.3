@@ -18,6 +18,15 @@ In each simulation step, I call the `compute_forces_gpu` CUDA kernel, which assi
 
 For each particle, I call the `apply_force_from_neighbor_gpu` CUDA kernel for each of the neighboring boxes. Currently the calling of this neighbor forces kernel is loop unrolled, but need to profile and check if this provides actual performance improvements. The `apply_force_from_neighbor_gpu` iterates through all particles in the neighboring box, and calls the given `apply_force_gpu` kernel to apply forces from the neighbor particle to thisParticle.
 
+## Errors
+
+Currently, not passing correctness check. Upon analysis of the GIF: ![1000_gpu_incorrect](outputs/1000_gpu.gif)
+
+One can see certain particles pass through others, not registering them as neighbors. Need to debug either:
+
+- box assignment
+- iterating through neighbor boxes and all particles from neighbor boxes
+
 ## Useful Commands
 
 salloc -A mp309 -N 1 -C gpu -q interactive -t 00:05:00
@@ -25,3 +34,5 @@ salloc -A mp309 -N 1 -C gpu -q interactive -t 00:05:00
 ./gpu -s 1 -o 1000.out
 
 ~/hw2-correctness/correctness-check.py 1000.out ~/hw2-correctness/verf.out
+
+~/hw2-rendering/render.py 1000.out 1000_gpu.gif 0.01
