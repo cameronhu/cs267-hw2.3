@@ -34,5 +34,6 @@ salloc -A mp309 -N 1 -C gpu -q interactive -t 00:05:00
 ./gpu -s 1 -o 1000.out
 
 ~/hw2-correctness/correctness-check.py 1000.out ~/hw2-correctness/verf.out
+~/hw2-correctness/correctness-check.py 10k.out ~/hw2-correctness/10k.out
 
 ~/hw2-rendering/render.py 1000.out 1000_gpu.gif 0.01
