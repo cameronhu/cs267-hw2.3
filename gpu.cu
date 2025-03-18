@@ -84,10 +84,11 @@ __device__ void apply_force_from_neighbor_gpu(int row, int col, particle_t& this
         int endIdx = prefixSums[boxIndex + 1];
 
         // Check if there are particles in the box
-        if (startIdx != -1) {
+        // A box with no particles will have same prefixSum as the next box
+        if (startIdx < endIdx) {
             // Apply forces for all particles in this neighboring box
             for (int i = startIdx; i < endIdx; ++i) {
-                int parts_idx = particle_ids[startIdx];
+                int parts_idx = particle_ids[i];
                 particle_t& neighbor = particles[parts_idx];
                 apply_force_gpu(thisParticle, neighbor);
             }
@@ -168,12 +169,8 @@ void countParticlesPerBox(particle_t* parts, int num_parts) {
 void computePrefixSum() {
     int prefixSum = 0;
     for (int boxIndex = 0; boxIndex <= totalBoxes; ++boxIndex) {
-        if (boxCounts[boxIndex] > 0) {
-            prefixSums[boxIndex] = prefixSum;
-            prefixSum += boxCounts[boxIndex];
-        } else {
-            prefixSums[boxIndex] = -1;
-        }
+        prefixSums[boxIndex] = prefixSum;
+        prefixSum += boxCounts[boxIndex];
         // printf("%i\n", boxCounts[boxIndex]);
     }
 }
