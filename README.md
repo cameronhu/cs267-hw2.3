@@ -10,8 +10,18 @@ For testing purposes, first pass implementations will all be on the CPU side. Wi
 
 In the future, we will rewrite these functions using CUDA kernels so that everything is handled on the GPU side.
 
+## GPU boxed force calculations
+
+Currently, each thread is assigned to a particle. It then checks each other particle in the parts array (on the GPU) to calculate forces, leading to O(N^2) runtime. I have created box assignment logic using the prefixSums and particle_ids arrays. For each particle, I can find the box this particle is assigned to. Then, using these two arrays, I can perform force calculations only for other particles within the same box, and other particles within neighboring boxes.
+
+In each simulation step, I call the `compute_forces_gpu` CUDA kernel, which assigns a single thread per particle. The threads are assigned to the order of particles defined by the `particle_ids` array, which means in order of boxes. This ensures that each thread accesses at least the `particle_ids` contiguously. Need to test if just accessing from the `particles` array directly is better. 
+
+For each particle, I call the `apply_force_from_neighbor_gpu` CUDA kernel for each of the neighboring boxes. Currently the calling of this neighbor forces kernel is loop unrolled, but need to profile and check if this provides actual performance improvements. The `apply_force_from_neighbor_gpu` iterates through all particles in the neighboring box, and calls the given `apply_force_gpu` kernel to apply forces from the neighbor particle to thisParticle.
+
 ## Useful Commands
 
 salloc -A mp309 -N 1 -C gpu -q interactive -t 00:05:00
+
+./gpu -s 1 -o 1000.out
 
 ~/hw2-correctness/correctness-check.py 1000.out ~/hw2-correctness/verf.out
