@@ -1,6 +1,7 @@
 #include "common.h"
 #include <cuda.h>
 #include <stdio.h>
+#include <stdexcept>
 
 #define NUM_THREADS 256
 #define INDEX(row, col) ((row) * numBoxes1D + (col))
@@ -39,6 +40,8 @@ int findBox(const particle_t& p) {
     int row = floor(p.y / boxSize1D);
     return INDEX(row, col);
 }
+
+void getParticleIndexFromBox() {}
 
 
 __device__ void apply_force_gpu(particle_t& particle, particle_t& neighbor) {
@@ -100,6 +103,68 @@ __global__ void move_gpu(particle_t* particles, int num_parts, double size) {
     }
 }
 
+// Iterates through parts and increments boxCounts
+void countParticlesPerBox(particle_t* parts, int num_parts) {
+    memset(boxCounts, 0, boxesMemSize);
+    for (int i = 0; i < num_parts; ++i) {
+        int boxIndex = findBox(parts[i]);
+        // printf("cur parts idx: %i. boxIndex: %i\n", i, boxIndex);
+        boxCounts[boxIndex]++;
+    }
+}
+
+// Iterates through boxCounts and computes a prefixSum
+void computePrefixSum() {
+    int prefixSum = 0;
+    for (int boxIndex = 0; boxIndex <= totalBoxes; ++boxIndex) {
+        if (boxCounts[boxIndex] > 0) {
+            prefixSums[boxIndex] = prefixSum;
+            prefixSum += boxCounts[boxIndex];
+        } else {
+            prefixSums[boxIndex] = -1;
+        }
+        // printf("%i\n", boxCounts[boxIndex]);
+    }
+}
+
+// Organizes parts by box, in particle_id array
+// Uses prefixSum and a reset boxCounts to compute where in particle_id the particle should be inserted 
+void populateParticleID(particle_t* parts, int num_parts) {
+    memset(boxCounts, 0, boxesMemSize);
+    for (int i = 0; i < num_parts; ++i) {
+        int boxIndex = findBox(parts[i]);
+        if (prefixSums[boxIndex] == -1) {
+            fprintf(stderr, "Populate Particle ID Error. Particle ID: %i. boxIndex: %i.\n", i, boxIndex);
+            throw std::runtime_error("Populate Particle ID Error. Box found has negative prefixSum");
+        }
+        int pos = prefixSums[boxIndex] + boxCounts[boxIndex];
+        particle_ids[pos] = i;
+        boxCounts[boxIndex]++;
+    }
+}
+
+void printAssignmentStats(particle_t* parts) {
+    int numEmpty = 0;
+    int numFilled = 0;
+    int partCount = 0;
+    for (int i = 0; i < totalBoxes; ++i) {
+        // prefixSums[i] = (boxCounts[i] > 0) ? prefixSums[i] : -1;
+        if (boxCounts[i] == 0) {
+            printf("Check for empty box %i. prefixSums[%i]: %i\n", i, i, prefixSums[i]);
+            numEmpty += 1;
+        }
+        else {
+            numFilled += 1;
+            partCount += boxCounts[i];
+            printf("Particle id: %i with coords: (%f, %f) in box %i. findBox_output: %i.\n",
+            particle_ids[prefixSums[i]], parts[particle_ids[prefixSums[i]]].x, parts[particle_ids[prefixSums[i]]].y, i, findBox(parts[particle_ids[prefixSums[i]]]));
+        }
+    }
+    printf("prefixSums[0]: %i. prefixSums[totalBoxes]: %i\n", prefixSums[0], prefixSums[totalBoxes]);
+    printf("Num empty boxes: %i. Num boxes w/ particles: %i. Num particles: %i. Average particles per box: %f\n", 
+        numEmpty, numFilled, partCount, (double)(partCount / numFilled));
+}
+
 void assignToBoxes(particle_t* parts, int num_parts) {
     setbuf(stdout, NULL);
     printf("Inside assignToBoxes\n");
@@ -115,63 +180,28 @@ void assignToBoxes(particle_t* parts, int num_parts) {
     printf("Num particles in cpu_parts: %lu\n", actual_size / sizeof(particle_t));
     
     // First pass: count particles in each box. Reset box counts from past iteration
-    memset(boxCounts, 0, boxesMemSize);
-    for (int i = 0; i < num_parts; ++i) {
-        // printf("cur parts idx: %i\n", i);
-        int boxIndex = findBox(cpu_parts[i]);
-        // printf("boxIndex: %i\n", boxIndex);
-        boxCounts[boxIndex]++;
-    }
-
+    countParticlesPerBox(cpu_parts, num_parts);
     // printf("Fin counting particles per box\n");
 
     // Compute starting index for each box in particle_idx
-    int prefixSum = 0;
-    for (int boxIndex = 0; boxIndex <= totalBoxes; ++boxIndex) {
-        prefixSums[boxIndex] = prefixSum;
-        prefixSum += boxCounts[boxIndex];
-        // printf("%i\n", boxCounts[boxIndex]);
-    }
+    computePrefixSum();
     // printf("Last value of prefix sums should be num_parts. prefixSums[-1]: %i. num_parts: %i\n", prefixSums[totalBoxes], num_parts);
-
     // printf("Fin calc starting particle_idx index for each box's first part\n");
 
-    // Reset box counts for use in the second pass
-    memset(boxCounts, 0, boxesMemSize);
-
     // Second pass: assign particles to particle_idx and update boxes
-    for (int i = 0; i < num_parts; ++i) {
-        int boxIndex = findBox(cpu_parts[i]);
-        int pos = prefixSums[boxIndex] + boxCounts[boxIndex];
-        particle_ids[pos] = i;
-        boxCounts[boxIndex]++;
-    }
+    populateParticleID(cpu_parts, num_parts);
     // printf("Fin second pass to assign particles `parts` index to particle_ids in proper box order.\n");
 
     // Update boxes array: -1 if box has no particles
     // for (int i = 0; i < totalBoxes; ++i) {
     //     boxes[i] = (boxCounts[i] > 0) ? prefixSums[i] : -1;
     // }
-    int numEmpty = 0;
-    int numFilled = 0;
-    int partCount = 0;
-    for (int i = 0; i < totalBoxes; ++i) {
-        prefixSums[i] = (boxCounts[i] > 0) ? prefixSums[i] : -1;
-        if (boxCounts[i] == 0) {
-            // printf("Check for empty box %i. prefixSums[%i]: %i\n", i, i, prefixSums[i]);
-            numEmpty += 1;
-        }
-        else {
-            numFilled += 1;
-            partCount += boxCounts[i];
-        }
-    }
+
     // printf("Updating `boxes` array with starting indices if box has particles.\n");
-    printf("prefixSums[0]: %i. prefixSums[totalBoxes]: %i\n", prefixSums[0], prefixSums[totalBoxes]);
-    printf("Num empty boxes: %i. Num boxes w/ particles: %i. Num particles: %i. Average particles per box: %f\n", 
-        numEmpty, numFilled, partCount, (double)(partCount / numFilled));
+    printAssignmentStats(cpu_parts);
 
     // ================ Copy all CPU arrays to mirrored GPU arrays ================
+    // cudaMemcpy(parts_gpu, parts, num_parts * sizeof(particle_t), cudaMemcpyHostToDevice);
 
 }
 
@@ -184,7 +214,7 @@ void init_simulation(particle_t* parts, int num_parts, double size) {
 
     // Assign global variables
     blks = (num_parts + NUM_THREADS - 1) / NUM_THREADS;
-    numBoxes1D = ceil(size / boxSize1D);
+    numBoxes1D = (int) ceil(size / boxSize1D);
     totalBoxes = numBoxes1D * numBoxes1D;
     boxesMemSize = totalBoxes * sizeof(int);
     prefixMemSize = (totalBoxes + 1) * sizeof(int);
