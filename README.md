@@ -13,3 +13,5 @@ In the future, we will rewrite these functions using CUDA kernels so that everyt
 ## Useful Commands
 
 salloc -A mp309 -N 1 -C gpu -q interactive -t 00:05:00
+
+~/hw2-correctness/correctness-check.py 1000.out ~/hw2-correctness/verf.out
