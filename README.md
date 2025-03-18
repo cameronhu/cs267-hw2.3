@@ -20,7 +20,7 @@ For each particle, I call the `apply_force_from_neighbor_gpu` CUDA kernel for ea
 
 ## GPU assignToBoxes
 
-The idea is to parallelize counting the number of particles per box, computation of the prefix sum, and assignment of `parts` indices to `particle_ids` through the GPU. Each thread will have access to the shared `gpu_boxCounts`, `gpu_prefixSums`, and `gpu_particle_ids` arrays. Atomic operations for adding in `gpu_boxCounts` will be necessary to prevent race conditions. Need to explore the best method for computing a prefixSum on the GPU: probably `thrust::exclusive_scan`.
+The idea is to parallelize counting the number of particles per box, computation of the prefix sum, and assignment of `parts` indices to `particle_ids` through the GPU. Each thread will have access to the shared `gpu_boxCounts`, `gpu_prefixSums`, and `gpu_particle_ids` arrays. Atomic operations for adding in `gpu_boxCounts` will be necessary to prevent race conditions. Specifically, I can use `atomicAdd(int* address, int val)` to add val to the integer array at address `int* address`. Need to explore the best method for computing a prefixSum on the GPU: probably `thrust::exclusive_scan`.
 
 ## Useful Commands
 

@@ -153,13 +153,15 @@ __global__ void move_gpu(particle_t* particles, int num_parts, double size) {
 }
 
 // Iterates through parts and increments boxCounts
-void countParticlesPerBox(particle_t* parts, int num_parts) {
-    memset(boxCounts, 0, boxesMemSize);
-    for (int i = 0; i < num_parts; ++i) {
-        int boxIndex = findBox(parts[i], numBoxes1D, boxSize1D);
-        // printf("cur parts idx: %i. boxIndex: %i\n", i, boxIndex);
-        boxCounts[boxIndex]++;
-    }
+__global__ void countParticlesPerBox(particle_t* gpu_parts, int num_parts, int* gpu_boxCounts) {
+    // Get thread (particle) ID
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    if (tid >= num_parts)
+        return;
+
+    int boxIndex = findBox(parts[tid], numBoxes1D, boxSize1D);
+    printf("cur parts idx: %i. boxIndex: %i. Coords: (%f, %f)\n", tid, boxIndex, parts[tid].x, parts[tid].y);
+    boxCounts[boxIndex]++;
 }
 
 // Iterates through boxCounts and computes a prefixSum
@@ -205,16 +207,17 @@ void printAssignmentStats(particle_t* parts) {
         numEmpty, numFilled, partCount, (double)(partCount / numFilled));
 }
 
-// Initializes the particle_id and prefixSums arrays, on CPU
-void assignToBoxes(particle_t* parts, int num_parts) {
+// Initializes the particle_id and prefixSums arrays, on GPU
+void assignToBoxes(particle_t* parts, int num_parts, int* gpu_boxCounts) {
     // setbuf(stdout, NULL);
 
     // Copy from parts (gpu_parts) to cpu_parts
     particle_t* cpu_parts = new particle_t[num_parts];
-    cudaMemcpy(cpu_parts, parts, num_parts * sizeof(particle_t), cudaMemcpyDeviceToHost);
-    
+    cudaMemcpy(cpu_parts, parts, num_parts * sizeof(particle_t), cudaMemcpyDeviceToHost);    
+
     // First pass: count particles in each box. Reset box counts from past iteration
-    countParticlesPerBox(cpu_parts, num_parts);
+    cudaMemset(gpu_boxCounts, 0, boxesMemSize);
+    countParticlesPerBox(parts, num_parts, gpu_boxCounts);
 
     // Compute starting index for each box in particle_idx
     computePrefixSum();
@@ -264,7 +267,7 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
     // Rewrite this function
 
     // Assign all particles to boxes
-    assignToBoxes(parts, num_parts);
+    assignToBoxes(parts, num_parts, gpu_boxCounts);
 
     // Copy CPU arrays that were updated by assignToBoxes to GPU
     copyArraysToGPU();
