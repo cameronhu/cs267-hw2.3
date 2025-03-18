@@ -34,19 +34,19 @@ int* gpu_boxes;
 // =================
 
 // Calculate the box row of the particle
-__device__ __host__ int findRow(const particle_t& p, int boxSize1D) {
+__device__ __host__ int findRow(const particle_t& p, double boxSize1D) {
     return floor(p.y / boxSize1D);
 }
 
 // Calculate the box column of the particle
-__device__ __host__ int findCol(const particle_t& p, int boxSize1D) {
+__device__ __host__ int findCol(const particle_t& p, double boxSize1D) {
     return floor(p.x / boxSize1D);
 }
 
 /**
 * Helper function to calculate the box index of a given particle
 */
-__device__ __host__ int findBox(const particle_t& p, int numBoxes1D, int boxSize1D) {
+__device__ __host__ int findBox(const particle_t& p, int numBoxes1D, double boxSize1D) {
     int col = floor(p.x / boxSize1D);
     int row = floor(p.y / boxSize1D);
     return INDEX(row, col);
