@@ -35,21 +35,25 @@ int* gpu_boxes;
 
 // Calculate the box row of the particle
 __device__ __host__ int findRow(const particle_t& p, int boxSize1D) {
-    return floor(p.y / boxSize1D);
+    // return floor(p.y / boxSize1D);
+    return floor(p.x / boxSize1D);
 }
 
 // Calculate the box column of the particle
 __device__ __host__ int findCol(const particle_t& p, int boxSize1D) {
-    return floor(p.x / boxSize1D);
+    // return floor(p.x / boxSize1D);
+    return floor(p.y / boxSize1D);
 }
 
 /**
 * Helper function to calculate the box index of a given particle
 */
 __device__ __host__ int findBox(const particle_t& p, int numBoxes1D, int boxSize1D) {
-    int col = floor(p.x / boxSize1D);
-    int row = floor(p.y / boxSize1D);
-    return INDEX(row, col);
+    // int col = floor(p.x / boxSize1D);
+    // int row = floor(p.y / boxSize1D);
+    int box_x = floor(p.x / boxSize1D);
+    int box_y = floor(p.y / boxSize1D);
+    return INDEX(box_x, box_y);
 }
 
 __device__ void apply_force_gpu(particle_t& particle, particle_t& neighbor) {
@@ -85,13 +89,11 @@ __device__ void apply_force_from_neighbor_gpu(int row, int col, particle_t& this
 
         // Check if there are particles in the box
         // A box with no particles will have same prefixSum as the next box
-        if (startIdx < endIdx) {
-            // Apply forces for all particles in this neighboring box
-            for (int i = startIdx; i < endIdx; ++i) {
-                int parts_idx = particle_ids[i];
-                particle_t& neighbor = particles[parts_idx];
-                apply_force_gpu(thisParticle, neighbor);
-            }
+        // Apply forces for all particles in this neighboring box
+        for (int i = startIdx; i < endIdx; ++i) {
+            int parts_idx = particle_ids[i];
+            particle_t& neighbor = particles[parts_idx];
+            apply_force_gpu(thisParticle, neighbor);
         }
     }
 }
@@ -104,8 +106,10 @@ __global__ void compute_forces_gpu(particle_t* particles, int num_parts, int* pa
 
     // Access through particle_ids array for coalesced memory access
     // TODO: check indexing through original particles array
-    int parts_idx = particle_ids[tid];
-    particle_t& thisParticle = particles[parts_idx];
+    // int parts_idx = particle_ids[tid];
+    // particle_t& thisParticle = particles[parts_idx];
+
+    particle_t& thisParticle = particles[tid];
     thisParticle.ax = thisParticle.ay = 0;
     int row = findRow(thisParticle, boxSize1D);
     int col = findCol(thisParticle, boxSize1D);
@@ -170,11 +174,12 @@ void computePrefixSum() {
     int prefixSum = 0;
     for (int boxIndex = 0; boxIndex <= totalBoxes; ++boxIndex) {
         prefixSums[boxIndex] = prefixSum;
-        prefixSum += boxCounts[boxIndex];
+        if (boxCounts[boxIndex] > 0) {
+            prefixSum += boxCounts[boxIndex];
+        }
         // printf("%i\n", boxCounts[boxIndex]);
     }
 }
-
 // Organizes parts by box, in particle_id array
 // Uses prefixSum and a reset boxCounts to compute where in particle_id the particle should be inserted 
 void populateParticleID(particle_t* parts, int num_parts) {
@@ -251,7 +256,7 @@ void init_simulation(particle_t* parts, int num_parts, double size) {
     totalBoxes = numBoxes1D * numBoxes1D;
     boxesMemSize = totalBoxes * sizeof(int);
     prefixMemSize = (totalBoxes + 1) * sizeof(int);
-    particle_idMemSize = num_parts * sizeof(particle_t);
+    particle_idMemSize = num_parts * sizeof(int);
 
     // Allocate memory for CPU-side arrays
     boxCounts = new int[totalBoxes]();
