@@ -33,17 +33,24 @@ int* gpu_boxes;
 // Helper Functions
 // =================
 
+// Calculate the box row of the particle
+__device__ __host__ int findRow(const particle_t& p, int boxSize1D) {
+    return floor(p.y / boxSize1D);
+}
+
+// Calculate the box column of the particle
+__device__ __host__ int findCol(const particle_t& p, int boxSize1D) {
+    return floor(p.x / boxSize1D);
+}
+
 /**
 * Helper function to calculate the box index of a given particle
 */
-int findBox(const particle_t& p) {
+__device__ __host__ int findBox(const particle_t& p, int numBoxes1D, int boxSize1D) {
     int col = floor(p.x / boxSize1D);
     int row = floor(p.y / boxSize1D);
     return INDEX(row, col);
 }
-
-void getParticleIndexFromBox() {}
-
 
 __device__ void apply_force_gpu(particle_t& particle, particle_t& neighbor) {
     double dx = neighbor.x - particle.x;
@@ -63,15 +70,58 @@ __device__ void apply_force_gpu(particle_t& particle, particle_t& neighbor) {
     particle.ay += coef * dy;
 }
 
-__global__ void compute_forces_gpu(particle_t* particles, int num_parts) {
+/**
+ * Given a particle, apply force from all other particles in the given box (row, col)
+ * @param row Row of the neighbor box
+ * @param col Column of the neighbor box
+ * @param thisParticle Particle to apply force to
+ */
+__device__ void apply_force_from_neighbor_gpu(int row, int col, particle_t& thisParticle, particle_t* particles, int* particle_ids, int* prefixSums, int numBoxes1D, int boxSize1D) {
+    // Check if the neighbor is within bounds
+    if (row >= 0 && row < numBoxes1D && col >= 0 && col < numBoxes1D) {
+        int boxIndex = INDEX(row, col);
+        int startIdx = prefixSums[boxIndex];
+        int endIdx = prefixSums[boxIndex + 1];
+
+        // Check if there are particles in the box
+        if (startIdx != -1) {
+            // Apply forces for all particles in this neighboring box
+            for (int i = startIdx; i < endIdx; ++i) {
+                int parts_idx = particle_ids[startIdx];
+                particle_t& neighbor = particles[parts_idx];
+                apply_force_gpu(thisParticle, neighbor);
+            }
+        }
+    }
+}
+
+__global__ void compute_forces_gpu(particle_t* particles, int num_parts, int* particle_ids, int* prefixSums, int numBoxes1D, double boxSize1D) {
     // Get thread (particle) ID
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     if (tid >= num_parts)
         return;
 
-    particles[tid].ax = particles[tid].ay = 0;
-    for (int j = 0; j < num_parts; j++)
-        apply_force_gpu(particles[tid], particles[j]);
+    // Access through particle_ids array for coalesced memory access
+    // TODO: check indexing through original particles array
+    int parts_idx = particle_ids[tid];
+    particle_t& thisParticle = particles[parts_idx];
+    thisParticle.ax = thisParticle.ay = 0;
+    int row = findRow(thisParticle, boxSize1D);
+    int col = findCol(thisParticle, boxSize1D);
+
+    // TODO: profile loop unrolling
+    apply_force_from_neighbor_gpu(row - 1, col - 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D); // Up Left
+    apply_force_from_neighbor_gpu(row - 1, col, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D);     // Up
+    apply_force_from_neighbor_gpu(row - 1, col + 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D); // Up Right
+    apply_force_from_neighbor_gpu(row, col - 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D);     // Left
+    apply_force_from_neighbor_gpu(row, col + 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D);     // Right
+    apply_force_from_neighbor_gpu(row + 1, col - 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D); // Down Left
+    apply_force_from_neighbor_gpu(row + 1, col, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D);     // Down
+    apply_force_from_neighbor_gpu(row + 1, col + 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D); // Down Right
+    apply_force_from_neighbor_gpu(row, col, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D);         // Self
+    
+    // for (int j = 0; j < num_parts; j++)
+    //     apply_force_gpu(particles[tid], particles[j]);
 }
 
 __global__ void move_gpu(particle_t* particles, int num_parts, double size) {
@@ -108,7 +158,7 @@ __global__ void move_gpu(particle_t* particles, int num_parts, double size) {
 void countParticlesPerBox(particle_t* parts, int num_parts) {
     memset(boxCounts, 0, boxesMemSize);
     for (int i = 0; i < num_parts; ++i) {
-        int boxIndex = findBox(parts[i]);
+        int boxIndex = findBox(parts[i], numBoxes1D, boxSize1D);
         // printf("cur parts idx: %i. boxIndex: %i\n", i, boxIndex);
         boxCounts[boxIndex]++;
     }
@@ -133,7 +183,7 @@ void computePrefixSum() {
 void populateParticleID(particle_t* parts, int num_parts) {
     memset(boxCounts, 0, boxesMemSize);
     for (int i = 0; i < num_parts; ++i) {
-        int boxIndex = findBox(parts[i]);
+        int boxIndex = findBox(parts[i], numBoxes1D, boxSize1D);
         if (prefixSums[boxIndex] == -1) {
             fprintf(stderr, "Populate Particle ID Error. Particle ID: %i. boxIndex: %i.\n", i, boxIndex);
             throw std::runtime_error("Populate Particle ID Error. Box found has negative prefixSum");
@@ -158,7 +208,7 @@ void printAssignmentStats(particle_t* parts) {
             numFilled += 1;
             partCount += boxCounts[i];
             printf("Particle id: %i with coords: (%f, %f) in box %i. findBox_output: %i.\n",
-            particle_ids[prefixSums[i]], parts[particle_ids[prefixSums[i]]].x, parts[particle_ids[prefixSums[i]]].y, i, findBox(parts[particle_ids[prefixSums[i]]]));
+            particle_ids[prefixSums[i]], parts[particle_ids[prefixSums[i]]].x, parts[particle_ids[prefixSums[i]]].y, i, findBox(parts[particle_ids[prefixSums[i]]], numBoxes1D, boxSize1D));
         }
     }
     printf("prefixSums[0]: %i. prefixSums[totalBoxes]: %i\n", prefixSums[0], prefixSums[totalBoxes]);
@@ -233,7 +283,7 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
     assignToBoxes(parts, num_parts);
 
     // Compute forces
-    compute_forces_gpu<<<blks, NUM_THREADS>>>(parts, num_parts);
+    compute_forces_gpu<<<blks, NUM_THREADS>>>(parts, num_parts, gpu_particle_ids, gpu_prefixSums, numBoxes1D, boxSize1D);
 
     // Move particles
     move_gpu<<<blks, NUM_THREADS>>>(parts, num_parts, size);
