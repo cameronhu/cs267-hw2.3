@@ -2,6 +2,8 @@
 #include <cuda.h>
 #include <stdio.h>
 #include <stdexcept>
+#include <thrust/device_ptr.h>
+#include <thrust/reduce.h>
 
 #define NUM_THREADS 256
 #define INDEX(row, col) ((row) * numBoxes1D + (col))
@@ -153,15 +155,15 @@ __global__ void move_gpu(particle_t* particles, int num_parts, double size) {
 }
 
 // Iterates through parts and increments boxCounts
-__global__ void countParticlesPerBox(particle_t* gpu_parts, int num_parts, int* gpu_boxCounts) {
+__global__ void countParticlesPerBox(particle_t* gpu_parts, int num_parts, int* gpu_boxCounts, int numBoxes1D, double boxSize1D) {
     // Get thread (particle) ID
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     if (tid >= num_parts)
         return;
 
-    int boxIndex = findBox(parts[tid], numBoxes1D, boxSize1D);
-    printf("cur parts idx: %i. boxIndex: %i. Coords: (%f, %f)\n", tid, boxIndex, parts[tid].x, parts[tid].y);
-    boxCounts[boxIndex]++;
+    int boxIndex = findBox(gpu_parts[tid], numBoxes1D, boxSize1D);
+    printf("cur parts idx: %i. boxIndex: %i. Coords: (%f, %f)\n", tid, boxIndex, gpu_parts[tid].x, gpu_parts[tid].y);
+    gpu_boxCounts[boxIndex]++;
 }
 
 // Iterates through boxCounts and computes a prefixSum
@@ -217,7 +219,11 @@ void assignToBoxes(particle_t* parts, int num_parts, int* gpu_boxCounts) {
 
     // First pass: count particles in each box. Reset box counts from past iteration
     cudaMemset(gpu_boxCounts, 0, boxesMemSize);
-    countParticlesPerBox(parts, num_parts, gpu_boxCounts);
+    countParticlesPerBox<<<blks, NUM_THREADS>>>(parts, num_parts, gpu_boxCounts, numBoxes1D, boxSize1D);
+    // Use thrust to calculate the sum of all values in gpu_boxCounts
+    thrust::device_ptr<int> dev_ptr(gpu_boxCounts);
+    int totalParticles = thrust::reduce(dev_ptr, dev_ptr + totalBoxes, 0, thrust::plus<int>());
+    printf("Total particles in all boxes: %d\n", totalParticles);
 
     // Compute starting index for each box in particle_idx
     computePrefixSum();
