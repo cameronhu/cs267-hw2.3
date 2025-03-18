@@ -32,6 +32,12 @@ BoxIndex = row * 71 + col = 3638.
 
 Box calculation is correct on the GPU side.
 
+Sum of gpu_boxCounts: 999
+
+For some reason, not all the particles are being assigned to a box initially.
+
+[X] FIXED: atomicAdd ensures all particles are counted and added to boxCounts
+[ ] TODO: correctness check failing
 
 ## Useful Commands
 

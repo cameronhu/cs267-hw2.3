@@ -164,7 +164,8 @@ __global__ void countParticlesPerBox(particle_t* gpu_parts, int num_parts, int* 
 
     int boxIndex = findBox(gpu_parts[tid], numBoxes1D, boxSize1D);
     // printf("cur parts idx: %i. boxIndex: %i. Coords: (%f, %f)\n", tid, boxIndex, gpu_parts[tid].x, gpu_parts[tid].y);
-    gpu_boxCounts[boxIndex]++;
+    // atomicAdd(&gpu_boxCounts[boxIndex], 1);
+    atomicAdd(gpu_boxCounts + boxIndex, 1);
 }
 
 // Iterates through boxCounts and computes a prefixSum
@@ -235,7 +236,7 @@ void assignToBoxes(particle_t* parts, int num_parts, int* gpu_boxCounts) {
     cudaDeviceSynchronize();
     cudaMemcpy(boxCounts, gpu_boxCounts, boxesMemSize, cudaMemcpyDeviceToHost);
 
-    // TEST cpu boxCounts sum
+    // // TEST cpu boxCounts sum
     int totalParticlesCPU = std::accumulate(boxCounts, boxCounts + totalBoxes, 0);
     printf("Sum of cpu boxCounts: %d\n", totalParticlesCPU);
 
