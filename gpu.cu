@@ -282,6 +282,9 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
     // Assign all particles to boxes
     assignToBoxes(parts, num_parts);
 
+    // Copy CPU arrays that were updated by assignToBoxes to GPU
+    copyArraysToGPU();
+
     // Compute forces
     compute_forces_gpu<<<blks, NUM_THREADS>>>(parts, num_parts, gpu_particle_ids, gpu_prefixSums, numBoxes1D, boxSize1D);
 
