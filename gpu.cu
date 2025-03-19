@@ -194,9 +194,8 @@ __global__ void populateParticleID(particle_t* gpu_parts, int num_parts, int* gp
         return;
 
     int boxIndex = findBox(gpu_parts[tid], numBoxes1D, boxSize1D);
-    int pos = gpu_prefixSums[boxIndex] + gpu_boxCounts[boxIndex];
+    int pos = atomicAdd(gpu_boxCounts + boxIndex, 1) + gpu_prefixSums[boxIndex];
     gpu_particle_ids[pos] = tid;
-    atomicAdd(gpu_boxCounts + boxIndex, 1);
 }
 
 void printAssignmentStats(particle_t* parts) {
@@ -263,8 +262,8 @@ void assignToBoxes(particle_t* gpu_parts, int num_parts, int* gpu_boxCounts, int
 
 // Copies data from CPU particle_id and prefixSums to mirrored arrs on GPU
 void copyArraysToGPU() {
-    // cudaMemcpy(gpu_particle_ids, particle_ids, particle_idMemSize, cudaMemcpyHostToDevice);
-    // cudaMemcpy(gpu_prefixSums, prefixSums, prefixMemSize, cudaMemcpyHostToDevice);
+    cudaMemcpy(gpu_particle_ids, particle_ids, particle_idMemSize, cudaMemcpyHostToDevice);
+    cudaMemcpy(gpu_prefixSums, prefixSums, prefixMemSize, cudaMemcpyHostToDevice);
 }
 
 void init_simulation(particle_t* parts, int num_parts, double size) {
@@ -289,7 +288,6 @@ void init_simulation(particle_t* parts, int num_parts, double size) {
 
     // Allocate memory for GPU-side arrays and copy from CPU-side arrays
     cudaMalloc((void**)&gpu_boxCounts, boxesMemSize);
-    cudaMemset(gpu_boxCounts, 0, boxesMemSize);
     cudaMalloc((void**)&gpu_prefixSums, prefixMemSize);
     cudaMalloc((void**)&gpu_particle_ids, particle_idMemSize);
 
