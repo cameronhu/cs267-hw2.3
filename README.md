@@ -37,7 +37,7 @@ Sum of gpu_boxCounts: 999
 For some reason, not all the particles are being assigned to a box initially.
 
 [X] FIXED: atomicAdd ensures all particles are counted and added to boxCounts
-[ ] TODO: correctness check failing
+[X] FIXED: correctness check. Incorrectly changed memory size when copying gpu_particles to cpu particles.
 
 ## Useful Commands
 

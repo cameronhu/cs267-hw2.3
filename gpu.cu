@@ -217,7 +217,7 @@ void assignToBoxes(particle_t* parts, int num_parts, int* gpu_boxCounts) {
 
     // Copy from parts (gpu_parts) to cpu_parts
     particle_t* cpu_parts = new particle_t[num_parts];
-    cudaMemcpy(cpu_parts, parts, particle_idMemSize, cudaMemcpyDeviceToHost);    
+    cudaMemcpy(cpu_parts, parts, num_parts * sizeof(particle_t), cudaMemcpyDeviceToHost);    
 
     // First pass: count particles in each box. Reset box counts from past iteration
     cudaMemset(gpu_boxCounts, 0, boxesMemSize);
@@ -225,11 +225,11 @@ void assignToBoxes(particle_t* parts, int num_parts, int* gpu_boxCounts) {
 
 
     //
-    // TEST countParticlesPerBox
-    // Use thrust to calculate the sum of all values in gpu_boxCounts
-    thrust::device_ptr<int> dev_ptr(gpu_boxCounts);
-    int totalParticles = thrust::reduce(dev_ptr, dev_ptr + totalBoxes, 0, thrust::plus<int>());
-    printf("Sum of gpu_boxCounts: %d\n", totalParticles);
+    // // TEST countParticlesPerBox
+    // // Use thrust to calculate the sum of all values in gpu_boxCounts
+    // thrust::device_ptr<int> dev_ptr(gpu_boxCounts);
+    // int totalParticles = thrust::reduce(dev_ptr, dev_ptr + totalBoxes, 0, thrust::plus<int>());
+    // printf("Sum of gpu_boxCounts: %d\n", totalParticles);
     
 
     // Wait for all threads to finish. Then copy gpu_boxCounts to CPU, use for computePrefixSum
@@ -237,8 +237,8 @@ void assignToBoxes(particle_t* parts, int num_parts, int* gpu_boxCounts) {
     cudaMemcpy(boxCounts, gpu_boxCounts, boxesMemSize, cudaMemcpyDeviceToHost);
 
     // // TEST cpu boxCounts sum
-    int totalParticlesCPU = std::accumulate(boxCounts, boxCounts + totalBoxes, 0);
-    printf("Sum of cpu boxCounts: %d\n", totalParticlesCPU);
+    // int totalParticlesCPU = std::accumulate(boxCounts, boxCounts + totalBoxes, 0);
+    // printf("Sum of cpu boxCounts: %d\n", totalParticlesCPU);
 
     // Compute starting index for each box in particle_idx from boxCounts
     computePrefixSum();
