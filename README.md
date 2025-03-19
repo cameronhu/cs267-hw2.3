@@ -20,7 +20,7 @@ For each particle, I call the `apply_force_from_neighbor_gpu` CUDA kernel for ea
 
 ## GPU assignToBoxes
 
-The idea is to parallelize counting the number of particles per box, computation of the prefix sum, and assignment of `parts` indices to `particle_ids` through the GPU. Each thread will have access to the shared `gpu_boxCounts`, `gpu_prefixSums`, and `gpu_particle_ids` arrays. Atomic operations for adding in `gpu_boxCounts` will be necessary to prevent race conditions. Specifically, I can use `atomicAdd(int* address, int val)` to add val to the integer array at address `int* address`. Need to explore the best method for computing a prefixSum on the GPU: probably `thrust::exclusive_scan`.
+The idea is to parallelize counting the number of particles per box, computation of the prefix sum, and assignment of `parts` indices to `particle_ids` through the GPU. Each thread will have access to the shared `gpu_boxCounts`, `gpu_prefixSums`, and `gpu_particle_ids` arrays. Atomic operations for adding in `gpu_boxCounts` will be necessary to prevent race conditions. Specifically, I can use `atomicAdd(int* address, int val)` to add val to the integer array at address `int* address`. Need to explore the best method for computing a prefixSum on the GPU: probably `thrust::exclusive_scan`. The `thrust` library allows for me to perform reductions and scans (such as generating a prefixSum) on the GPU without explicitly defining a CUDA kernel. The `thrust` library already implemented a parallel prefixSum calculation, and I just leveraged the existing functions to do so. Important to note is that `exclusive_scan` omits the very last prefixSum at index totalBoxes, which is just used to calculate the ending index for the last box. That value was manually added into the `gpu_prefixSums` array.
 
 ## Debugging Information For GPU countParticlesPerBox
 
@@ -43,9 +43,10 @@ For some reason, not all the particles are being assigned to a box initially.
 
 salloc -A mp309 -N 1 -C gpu -q interactive -t 00:05:00
 
-./gpu -s 1 -o 1000.out
+./gpu -s 1 -o $SCRATCH/1000.out
+./gpu -s 1 -n 10000 -o $SCRATCH/10k.out
 
-~/hw2-correctness/correctness-check.py 1000.out ~/hw2-correctness/verf.out
-~/hw2-correctness/correctness-check.py 10k.out ~/hw2-correctness/10k.out
+~/hw2-correctness/correctness-check.py $SCRATCH/1000.out ~/hw2-correctness/verf.out
+~/hw2-correctness/correctness-check.py $SCRATCH/10k.out ~/hw2-correctness/10k.out
 
 ~/hw2-rendering/render.py 1000.out 1000_gpu.gif 0.01
