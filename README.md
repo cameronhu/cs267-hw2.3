@@ -18,14 +18,26 @@ In each simulation step, I call the `compute_forces_gpu` CUDA kernel, which assi
 
 For each particle, I call the `apply_force_from_neighbor_gpu` CUDA kernel for each of the neighboring boxes. Currently the calling of this neighbor forces kernel is loop unrolled, but need to profile and check if this provides actual performance improvements. The `apply_force_from_neighbor_gpu` iterates through all particles in the neighboring box, and calls the given `apply_force_gpu` kernel to apply forces from the neighbor particle to thisParticle.
 
-## Errors
+## GPU assignToBoxes
 
-Currently, not passing correctness check. Upon analysis of the GIF: ![1000_gpu_incorrect](outputs/1000_gpu.gif)
+The idea is to parallelize counting the number of particles per box, computation of the prefix sum, and assignment of `parts` indices to `particle_ids` through the GPU. Each thread will have access to the shared `gpu_boxCounts`, `gpu_prefixSums`, and `gpu_particle_ids` arrays. Atomic operations for adding in `gpu_boxCounts` will be necessary to prevent race conditions. Specifically, I can use `atomicAdd(int* address, int val)` to add val to the integer array at address `int* address`. Need to explore the best method for computing a prefixSum on the GPU: probably `thrust::exclusive_scan`.
 
-One can see certain particles pass through others, not registering them as neighbors. Need to debug either:
+## Debugging Information For GPU countParticlesPerBox
 
-- box assignment
-- iterating through neighbor boxes and all particles from neighbor boxes
+For 1000 particles, 71 boxes by 71 boxes. boxSize1D: 0.01  
+
+cur parts idx: 63. boxIndex: 3638. Coords: (0.177000, 0.519787)
+Row = 51. Col = 17.
+BoxIndex = row * 71 + col = 3638.
+
+Box calculation is correct on the GPU side.
+
+Sum of gpu_boxCounts: 999
+
+For some reason, not all the particles are being assigned to a box initially.
+
+[X] FIXED: atomicAdd ensures all particles are counted and added to boxCounts
+[X] FIXED: correctness check. Incorrectly changed memory size when copying gpu_particles to cpu particles.
 
 ## Useful Commands
 
