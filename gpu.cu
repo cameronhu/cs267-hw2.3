@@ -173,9 +173,11 @@ __global__ void countParticlesPerBox(particle_t* gpu_parts, int num_parts, int* 
 void computePrefixSum(int* gpu_boxCounts, int* gpu_prefixSums, int totalBoxes, int num_parts) {
     thrust::device_ptr<int> dev_counts(gpu_boxCounts);
     thrust::device_ptr<int> dev_sums(gpu_prefixSums);
+    printf("Pointers to gpu box counts and prefixSum\n");
 
     // Use thrust::exclusive_scan. gpu_prefixSums[0] = 0
-    thrust::exclusive_scan(gpu_boxCounts, gpu_boxCounts + totalBoxes, gpu_prefixSums);
+    thrust::exclusive_scan(dev_counts, dev_counts + totalBoxes, dev_sums);
+    printf("Completed thrust exclusive scan\n");
 
     // Manually compute and assign the last value of gpu_prefixSums using gpu_boxCounts
     int last_prefixSum = dev_sums[totalBoxes - 1] + dev_counts[totalBoxes - 1];
@@ -219,7 +221,7 @@ void printAssignmentStats(particle_t* parts) {
 
 // Initializes the particle_id and prefixSums arrays, on GPU
 void assignToBoxes(particle_t* parts, int num_parts, int* gpu_boxCounts, int* gpu_prefixSums) {
-    // setbuf(stdout, NULL);
+    setbuf(stdout, NULL);
 
     // Copy from parts (gpu_parts) to cpu_parts
     particle_t* cpu_parts = new particle_t[num_parts];
@@ -246,8 +248,9 @@ void assignToBoxes(particle_t* parts, int num_parts, int* gpu_boxCounts, int* gp
     // int totalParticlesCPU = std::accumulate(boxCounts, boxCounts + totalBoxes, 0);
     // printf("Sum of cpu boxCounts: %d\n", totalParticlesCPU);
 
-    // Compute starting index for each box in particle_idx from boxCounts
+    // Compute prefixSums on GPU, copy to CPU prefixSums
     computePrefixSum(gpu_boxCounts, gpu_prefixSums, totalBoxes, num_parts);
+    cudaMemcpy(prefixSums, gpu_prefixSums, prefixMemSize, cudaMemcpyDeviceToHost);
 
     populateParticleID(cpu_parts, num_parts);
 
@@ -257,7 +260,7 @@ void assignToBoxes(particle_t* parts, int num_parts, int* gpu_boxCounts, int* gp
 // Copies data from CPU particle_id and prefixSums to mirrored arrs on GPU
 void copyArraysToGPU() {
     cudaMemcpy(gpu_particle_ids, particle_ids, particle_idMemSize, cudaMemcpyHostToDevice);
-    cudaMemcpy(gpu_prefixSums, prefixSums, prefixMemSize, cudaMemcpyHostToDevice);
+    // cudaMemcpy(gpu_prefixSums, prefixSums, prefixMemSize, cudaMemcpyHostToDevice);
 }
 
 void init_simulation(particle_t* parts, int num_parts, double size) {
@@ -294,7 +297,7 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
     // Rewrite this function
 
     // Assign all particles to boxes
-    assignToBoxes(parts, num_parts, gpu_boxCounts);
+    assignToBoxes(parts, num_parts, gpu_boxCounts, gpu_prefixSums);
 
     // Copy CPU arrays that were updated by assignToBoxes to GPU
     copyArraysToGPU();
