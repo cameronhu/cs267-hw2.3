@@ -39,12 +39,29 @@ For some reason, not all the particles are being assigned to a box initially.
 [X] FIXED: atomicAdd ensures all particles are counted and added to boxCounts
 [X] FIXED: correctness check. Incorrectly changed memory size when copying gpu_particles to cpu particles.
 
+## Initial Kernel Implementation Times
+
+- First pass for CUDA kernels for boxCounts, prefixSums, particle_ids assignment, and force calculations. With -o outputting.
+  - | # Particles  | Time (s) |
+    |---|---|
+    | 1000  | 0.296442 |
+    | 10000  | 2.15889 |
+    | 100000  | 20.4864 |
+- Without -o outputting
+  - | # Particles  | Time (s) |
+    |---|---|
+    | 1000  |  |
+    | 10000  |  |
+    | 100000  |  |
+
+
 ## Useful Commands
 
 salloc -A mp309 -N 1 -C gpu -q interactive -t 00:05:00
 
 ./gpu -s 1 -o $SCRATCH/1000.out
 ./gpu -s 1 -n 10000 -o $SCRATCH/10k.out
+./gpu -s 1 -n 100000 -o $SCRATCH/100k.out
 
 ~/hw2-correctness/correctness-check.py $SCRATCH/1000.out ~/hw2-correctness/verf.out
 ~/hw2-correctness/correctness-check.py $SCRATCH/10k.out ~/hw2-correctness/10k.out
