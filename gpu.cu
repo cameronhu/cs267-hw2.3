@@ -173,11 +173,11 @@ __global__ void countParticlesPerBox(particle_t* gpu_parts, int num_parts, int* 
 void computePrefixSum(int* gpu_boxCounts, int* gpu_prefixSums, int totalBoxes, int num_parts) {
     thrust::device_ptr<int> dev_counts(gpu_boxCounts);
     thrust::device_ptr<int> dev_sums(gpu_prefixSums);
-    printf("Pointers to gpu box counts and prefixSum\n");
+    // printf("Pointers to gpu box counts and prefixSum\n");
 
     // Use thrust::exclusive_scan. gpu_prefixSums[0] = 0
     thrust::exclusive_scan(dev_counts, dev_counts + totalBoxes, dev_sums);
-    printf("Completed thrust exclusive scan\n");
+    // printf("Completed thrust exclusive scan\n");
 
     // Manually compute and assign the last value of gpu_prefixSums using gpu_boxCounts
     int last_prefixSum = dev_sums[totalBoxes - 1] + dev_counts[totalBoxes - 1];
