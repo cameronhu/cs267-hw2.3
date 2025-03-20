@@ -109,7 +109,7 @@ __global__ void compute_forces_gpu(particle_t* particles, int num_parts, int* pa
     // particle_t& thisParticle = particles[parts_idx];
     //
 
-    int idx = gpu_particle_ids[tid];
+    int idx = particle_ids[tid];
     particle_t& thisParticle = particles[idx];
     thisParticle.ax = thisParticle.ay = 0;
     int row = findRow(thisParticle, boxSize1D);
