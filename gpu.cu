@@ -126,10 +126,48 @@ __global__ void compute_forces_gpu(particle_t* particles, int num_parts, int* pa
     apply_force_from_neighbor_gpu(row + 1, col + 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D); // Down Right
     apply_force_from_neighbor_gpu(row, col, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D);         // Self
 }
-// __global__ void compute_forces_gpu(particle_t* particles, int num_parts, int* particle_ids, int* prefixSums, int numBoxes1D, double boxSize1D) {
+__global__ void compute_forces_move(particle_t* particles, int num_parts, int* particle_ids, int* prefixSums, int numBoxes1D, double boxSize1D,double size) {
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    if (tid >= num_parts)
+        return;
 
+    int idx = particle_ids[tid];
+    particle_t& thisParticle = particles[idx];
+    thisParticle.ax = thisParticle.ay = 0;
+    int row = findRow(thisParticle, boxSize1D);
+    int col = findCol(thisParticle, boxSize1D);
 
-// }
+    // TODO: profile loop unrolling
+    apply_force_from_neighbor_gpu(row - 1, col - 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D); // Up Left
+    apply_force_from_neighbor_gpu(row - 1, col, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D);     // Up
+    apply_force_from_neighbor_gpu(row - 1, col + 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D); // Up Right
+    apply_force_from_neighbor_gpu(row, col - 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D);     // Left
+    apply_force_from_neighbor_gpu(row, col + 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D);     // Right
+    apply_force_from_neighbor_gpu(row + 1, col - 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D); // Down Left
+    apply_force_from_neighbor_gpu(row + 1, col, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D);     // Down
+    apply_force_from_neighbor_gpu(row + 1, col + 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D); // Down Right
+    apply_force_from_neighbor_gpu(row, col, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D);         // Self
+    thisParticle.vx += thisParticle.ax * dt;
+    thisParticle.vy += thisParticle.ay * dt;
+    thisParticle.x  += thisParticle.vx * dt;
+    thisParticle.y  += thisParticle.vy * dt;
+
+    // 6) Bounce from walls
+    while (thisParticle.x < 0 || thisParticle.x > size) {
+        thisParticle.x = (thisParticle.x < 0)
+            ? -thisParticle.x
+            : 2 * size - thisParticle.x;
+        thisParticle.vx = -thisParticle.vx;
+    }
+    while (thisParticle.y < 0 || thisParticle.y > size) {
+        thisParticle.y = (thisParticle.y < 0)
+            ? -thisParticle.y
+            : 2 * size - thisParticle.y;
+        thisParticle.vy = -thisParticle.vy;
+    }
+}
+
+}
 
 __global__ void move_gpu(particle_t* particles, int num_parts, double size) {
 
@@ -312,8 +350,9 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
     // copyArraysToGPU();
 
     // Compute forces
-    compute_forces_gpu<<<blks, NUM_THREADS>>>(parts, num_parts, gpu_particle_ids, gpu_prefixSums, numBoxes1D, boxSize1D);
+    // compute_forces_gpu<<<blks, NUM_THREADS>>>(parts, num_parts, gpu_particle_ids, gpu_prefixSums, numBoxes1D, boxSize1D);
 
     // Move particles
-    move_gpu<<<blks, NUM_THREADS>>>(parts, num_parts, size);
-}
+//     move_gpu<<<blks, NUM_THREADS>>>(parts, num_parts, size);
+    compute_forces_move<<<blks, NUM_THREADS>>>(parts, num_parts, gpu_particle_ids, gpu_prefixSums, numBoxes1D, boxSize1D,size);
+// }
