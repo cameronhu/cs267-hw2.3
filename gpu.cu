@@ -109,15 +109,11 @@ __global__ void compute_forces_gpu(particle_t* particles, int num_parts, int* pa
     // particle_t& thisParticle = particles[parts_idx];
     //
 
-
     int idx = particle_ids[tid];
     particle_t& thisParticle = particles[idx];
     thisParticle.ax = thisParticle.ay = 0;
-    //int row = findRow(thisParticle, boxSize1D);
-    //int col = findCol(thisParticle, boxSize1D);
-    double inverseBox = 1.0 / boxSize1D;
-    int row = (int)(thisParticle.y * inverseBox);
-    int col = (int)(thisParticle.x * inverseBox);
+    int row = findRow(thisParticle, boxSize1D);
+    int col = findCol(thisParticle, boxSize1D);
 
     // TODO: profile loop unrolling
     apply_force_from_neighbor_gpu(row - 1, col - 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D); // Up Left
