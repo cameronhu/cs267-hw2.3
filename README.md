@@ -50,10 +50,11 @@ For some reason, not all the particles are being assigned to a box initially.
 - Without -o outputting
   - | # Particles  | Time (s) |
     |---|---|
-    | 1000  | 0.0802011 |
-    | 10000  | 0.0832291 |
-    | 100000  | 0.116139 |
-
+    | 1,000  | 0.0802011 |
+    | 10,000  | 0.0832291 |
+    | 100,000  | 0.116139 |
+    | 1,000,000  | 1.49235 |
+    | 10,000,000  | 15.6889 |
 
 ## Useful Commands
 
