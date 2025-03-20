@@ -96,35 +96,70 @@ __device__ void apply_force_from_neighbor_gpu(int row, int col, particle_t& this
     }
 }
 
-__global__ void compute_forces_gpu(particle_t* particles, int num_parts, int* particle_ids, int* prefixSums, int numBoxes1D, double boxSize1D) {
-    // Get thread (particle) ID
+// __global__ void compute_forces_gpu(particle_t* particles, int num_parts, int* particle_ids, int* prefixSums, int numBoxes1D, double boxSize1D) {
+//     // Get thread (particle) ID
+//     int tid = threadIdx.x + blockIdx.x * blockDim.x;
+//     if (tid >= num_parts)
+//         return;
+
+//     //
+//     // TODO: check indexing through particle_ids array
+//     // Access through particle_ids array for coalesced memory access
+//     // int parts_idx = particle_ids[tid];
+//     // particle_t& thisParticle = particles[parts_idx];
+//     //
+
+//     int idx = particle_ids[tid];
+//     particle_t& thisParticle = particles[idx];
+//     thisParticle.ax = thisParticle.ay = 0;
+//     int row = findRow(thisParticle, boxSize1D);
+//     int col = findCol(thisParticle, boxSize1D);
+
+//     // TODO: profile loop unrolling
+//     apply_force_from_neighbor_gpu(row - 1, col - 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D); // Up Left
+//     apply_force_from_neighbor_gpu(row - 1, col, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D);     // Up
+//     apply_force_from_neighbor_gpu(row - 1, col + 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D); // Up Right
+//     apply_force_from_neighbor_gpu(row, col - 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D);     // Left
+//     apply_force_from_neighbor_gpu(row, col + 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D);     // Right
+//     apply_force_from_neighbor_gpu(row + 1, col - 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D); // Down Left
+//     apply_force_from_neighbor_gpu(row + 1, col, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D);     // Down
+//     apply_force_from_neighbor_gpu(row + 1, col + 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D); // Down Right
+//     apply_force_from_neighbor_gpu(row, col, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D);         // Self
+// }
+
+__global__ void compute_forces_gpu(particle_t* particles, int num_parts, int* particle_ids, int* prefixSums, int numBoxes1D, double boxSize1D){
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     if (tid >= num_parts)
         return;
 
-    //
-    // TODO: check indexing through particle_ids array
-    // Access through particle_ids array for coalesced memory access
-    // int parts_idx = particle_ids[tid];
-    // particle_t& thisParticle = particles[parts_idx];
-    //
-
     int idx = particle_ids[tid];
     particle_t& thisParticle = particles[idx];
     thisParticle.ax = thisParticle.ay = 0;
+
     int row = findRow(thisParticle, boxSize1D);
     int col = findCol(thisParticle, boxSize1D);
 
-    // TODO: profile loop unrolling
-    apply_force_from_neighbor_gpu(row - 1, col - 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D); // Up Left
-    apply_force_from_neighbor_gpu(row - 1, col, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D);     // Up
-    apply_force_from_neighbor_gpu(row - 1, col + 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D); // Up Right
-    apply_force_from_neighbor_gpu(row, col - 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D);     // Left
-    apply_force_from_neighbor_gpu(row, col + 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D);     // Right
-    apply_force_from_neighbor_gpu(row + 1, col - 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D); // Down Left
-    apply_force_from_neighbor_gpu(row + 1, col, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D);     // Down
-    apply_force_from_neighbor_gpu(row + 1, col + 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D); // Down Right
-    apply_force_from_neighbor_gpu(row, col, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D);         // Self
+    __shared__ particle_t sharedParticles[NUM_THREADS];
+
+    for (int rowOffset = -1; rowOffset <= 1; rowOffset++){
+        for (int colOffset = -1; colOffset <=1; colOffset++){
+            int rNeighbor = row + rowOffset
+            int cNeighbor = col + colOffset
+
+            if (rNeighbor >= 0 && rNeighbor < numBoxes1D && cNeighbor >= 0 && cNeighbor < numBoxes1D) {
+                int boxIndex = INDEX(rNeighbor, cNeighbor);
+                int startIdx = prefixSums[boxIndex];
+                int endIdx = prefixSums[boxIndex + 1];
+
+                for (int i = startIdx; i < endIdx; ++i) {
+                    int parts_idx = particle_ids[i];
+                    //particle_t& neighbor = particles[parts_idx];
+                    apply_force_gpu(thisParticle, particles[parts_idx]);
+                }
+            }
+        }
+    }
+
 }
 
 __global__ void move_gpu(particle_t* particles, int num_parts, double size) {
@@ -157,7 +192,7 @@ __global__ void move_gpu(particle_t* particles, int num_parts, double size) {
     }
 }
 
-//__global__ void compute_forces_move()
+
 
 // Iterates through parts and increments boxCounts
 __global__ void countParticlesPerBox(particle_t* gpu_parts, int num_parts, int* gpu_boxCounts, int numBoxes1D, double boxSize1D) {
