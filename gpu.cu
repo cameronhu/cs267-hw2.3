@@ -2,6 +2,10 @@
 #include <cuda.h>
 #include <stdio.h>
 #include <stdexcept>
+#include <thrust/device_ptr.h>
+#include <thrust/reduce.h>
+#include <thrust/scan.h>
+#include <numeric>
 
 #define NUM_THREADS 256
 #define INDEX(row, col) ((row) * numBoxes1D + (col))
@@ -21,13 +25,11 @@ size_t particle_idMemSize;
 int* boxCounts;
 int* prefixSums;
 int* particle_ids;
-int* boxes;
 
 // GPU arrays
 int* gpu_boxCounts;
 int* gpu_prefixSums;
 int* gpu_particle_ids;
-int* gpu_boxes;
 
 // =================
 // Helper Functions
@@ -85,13 +87,11 @@ __device__ void apply_force_from_neighbor_gpu(int row, int col, particle_t& this
 
         // Check if there are particles in the box
         // A box with no particles will have same prefixSum as the next box
-        if (startIdx < endIdx) {
-            // Apply forces for all particles in this neighboring box
-            for (int i = startIdx; i < endIdx; ++i) {
-                int parts_idx = particle_ids[i];
-                particle_t& neighbor = particles[parts_idx];
-                apply_force_gpu(thisParticle, neighbor);
-            }
+        // Apply forces for all particles in this neighboring box
+        for (int i = startIdx; i < endIdx; ++i) {
+            int parts_idx = particle_ids[i];
+            particle_t& neighbor = particles[parts_idx];
+            apply_force_gpu(thisParticle, neighbor);
         }
     }
 }
@@ -102,10 +102,15 @@ __global__ void compute_forces_gpu(particle_t* particles, int num_parts, int* pa
     if (tid >= num_parts)
         return;
 
+    //
+    // TODO: check indexing through particle_ids array
     // Access through particle_ids array for coalesced memory access
-    // TODO: check indexing through original particles array
-    int parts_idx = particle_ids[tid];
-    particle_t& thisParticle = particles[parts_idx];
+    // int parts_idx = particle_ids[tid];
+    // particle_t& thisParticle = particles[parts_idx];
+    //
+
+    int idx = gpu_particle_ids[tid];
+    particle_t& thisParticle = particles[idx];
     thisParticle.ax = thisParticle.ay = 0;
     int row = findRow(thisParticle, boxSize1D);
     int col = findCol(thisParticle, boxSize1D);
@@ -120,10 +125,11 @@ __global__ void compute_forces_gpu(particle_t* particles, int num_parts, int* pa
     apply_force_from_neighbor_gpu(row + 1, col, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D);     // Down
     apply_force_from_neighbor_gpu(row + 1, col + 1, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D); // Down Right
     apply_force_from_neighbor_gpu(row, col, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D);         // Self
-    
-    // for (int j = 0; j < num_parts; j++)
-    //     apply_force_gpu(particles[tid], particles[j]);
 }
+// __global__ void compute_forces_gpu(particle_t* particles, int num_parts, int* particle_ids, int* prefixSums, int numBoxes1D, double boxSize1D) {
+
+
+// }
 
 __global__ void move_gpu(particle_t* particles, int num_parts, double size) {
 
@@ -155,41 +161,48 @@ __global__ void move_gpu(particle_t* particles, int num_parts, double size) {
     }
 }
 
+//__global__ void compute_forces_move()
+
 // Iterates through parts and increments boxCounts
-void countParticlesPerBox(particle_t* parts, int num_parts) {
-    memset(boxCounts, 0, boxesMemSize);
-    for (int i = 0; i < num_parts; ++i) {
-        int boxIndex = findBox(parts[i], numBoxes1D, boxSize1D);
-        // printf("cur parts idx: %i. boxIndex: %i\n", i, boxIndex);
-        boxCounts[boxIndex]++;
-    }
+__global__ void countParticlesPerBox(particle_t* gpu_parts, int num_parts, int* gpu_boxCounts, int numBoxes1D, double boxSize1D) {
+    // Get thread (particle) ID
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    if (tid >= num_parts)
+        return;
+
+    int boxIndex = findBox(gpu_parts[tid], numBoxes1D, boxSize1D);
+    // printf("cur parts idx: %i. boxIndex: %i. Coords: (%f, %f)\n", tid, boxIndex, gpu_parts[tid].x, gpu_parts[tid].y);
+    // atomicAdd(&gpu_boxCounts[boxIndex], 1);
+    atomicAdd(gpu_boxCounts + boxIndex, 1);
 }
 
-// Iterates through boxCounts and computes a prefixSum
-void computePrefixSum() {
-    int prefixSum = 0;
-    for (int boxIndex = 0; boxIndex < totalBoxes; ++boxIndex) {
-        prefixSums[boxIndex] = prefixSum;
-        prefixSum += boxCounts[boxIndex];
-        // printf("%i\n", boxCounts[boxIndex]);
-    }
-    prefixSums[totalBoxes] = prefixSum;
+// Uses thrust library to perform an exclusive scan of gpu_boxCounts (the prefixSum)
+void computePrefixSum(int* gpu_boxCounts, int* gpu_prefixSums, int totalBoxes, int num_parts) {
+    thrust::device_ptr<int> dev_counts(gpu_boxCounts);
+    thrust::device_ptr<int> dev_sums(gpu_prefixSums);
+    // printf("Pointers to gpu box counts and prefixSum\n");
+
+    // Use thrust::exclusive_scan. gpu_prefixSums[0] = 0
+    thrust::exclusive_scan(dev_counts, dev_counts + totalBoxes, dev_sums);
+    // printf("Completed thrust exclusive scan\n");
+
+    // Manually compute and assign the last value of gpu_prefixSums using gpu_boxCounts
+    int last_prefixSum = dev_sums[totalBoxes - 1] + dev_counts[totalBoxes - 1];
+    assert(last_prefixSum == num_parts);
+    cudaMemcpy(gpu_prefixSums + totalBoxes, &last_prefixSum, sizeof(int), cudaMemcpyHostToDevice);
 }
 
-// Organizes parts by box, in particle_id array
+// Organizes parts by box, in gpu_particle_ids array
 // Uses prefixSum and a reset boxCounts to compute where in particle_id the particle should be inserted 
-void populateParticleID(particle_t* parts, int num_parts) {
-    memset(boxCounts, 0, boxesMemSize);
-    for (int i = 0; i < num_parts; ++i) {
-        int boxIndex = findBox(parts[i], numBoxes1D, boxSize1D);
-        if (prefixSums[boxIndex] == -1) {
-            fprintf(stderr, "Populate Particle ID Error. Particle ID: %i. boxIndex: %i.\n", i, boxIndex);
-            throw std::runtime_error("Populate Particle ID Error. Box found has negative prefixSum");
-        }
-        int pos = prefixSums[boxIndex] + boxCounts[boxIndex];
-        particle_ids[pos] = i;
-        boxCounts[boxIndex]++;
-    }
+__global__ void populateParticleID(particle_t* gpu_parts, int num_parts, int* gpu_boxCounts, int* gpu_prefixSums, int* gpu_particle_ids, int numBoxes1D, double boxSize1D) {
+    // Get thread (particle) ID
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    if (tid >= num_parts)
+        return;
+
+    int boxIndex = findBox(gpu_parts[tid], numBoxes1D, boxSize1D);
+    int pos = atomicAdd(gpu_boxCounts + boxIndex, 1) + gpu_prefixSums[boxIndex];
+    gpu_particle_ids[pos] = tid;
 }
 
 void printAssignmentStats(particle_t* parts) {
@@ -214,21 +227,42 @@ void printAssignmentStats(particle_t* parts) {
         numEmpty, numFilled, partCount, (double)(partCount / numFilled));
 }
 
-// Initializes the particle_id and prefixSums arrays, on CPU
-void assignToBoxes(particle_t* parts, int num_parts) {
-    // setbuf(stdout, NULL);
+// Initializes the particle_id and prefixSums arrays, on GPU
+void assignToBoxes(particle_t* gpu_parts, int num_parts, int* gpu_boxCounts, int* gpu_prefixSums, int* gpu_particle_ids) {
+    setbuf(stdout, NULL);
 
     // Copy from parts (gpu_parts) to cpu_parts
-    particle_t* cpu_parts = new particle_t[num_parts];
-    cudaMemcpy(cpu_parts, parts, num_parts * sizeof(particle_t), cudaMemcpyDeviceToHost);
-    
+    // particle_t* cpu_parts = new particle_t[num_parts];
+    // cudaMemcpy(cpu_parts, gpu_parts, num_parts * sizeof(particle_t), cudaMemcpyDeviceToHost);    
+
     // First pass: count particles in each box. Reset box counts from past iteration
-    countParticlesPerBox(cpu_parts, num_parts);
+    cudaMemset(gpu_boxCounts, 0, boxesMemSize);
+    countParticlesPerBox<<<blks, NUM_THREADS>>>(gpu_parts, num_parts, gpu_boxCounts, numBoxes1D, boxSize1D);
 
-    // Compute starting index for each box in particle_idx
-    computePrefixSum();
+    //
+    // // TEST countParticlesPerBox
+    // // Use thrust to calculate the sum of all values in gpu_boxCounts
+    // thrust::device_ptr<int> dev_ptr(gpu_boxCounts);
+    // int totalParticles = thrust::reduce(dev_ptr, dev_ptr + totalBoxes, 0, thrust::plus<int>());
+    // printf("Sum of gpu_boxCounts: %d\n", totalParticles);
+    
 
-    populateParticleID(cpu_parts, num_parts);
+    // Wait for all threads to finish. Then copy gpu_boxCounts to CPU, use for computePrefixSum
+    cudaDeviceSynchronize();
+    // cudaMemcpy(boxCounts, gpu_boxCounts, boxesMemSize, cudaMemcpyDeviceToHost);
+
+    // // TEST cpu boxCounts sum
+    // int totalParticlesCPU = std::accumulate(boxCounts, boxCounts + totalBoxes, 0);
+    // printf("Sum of cpu boxCounts: %d\n", totalParticlesCPU);
+
+    // Compute prefixSums on GPU, copy to CPU prefixSums
+    computePrefixSum(gpu_boxCounts, gpu_prefixSums, totalBoxes, num_parts);
+    // cudaMemcpy(prefixSums, gpu_prefixSums, prefixMemSize, cudaMemcpyDeviceToHost);
+
+    // Reset gpu_boxCounts for populateParticleID
+    cudaMemset(gpu_boxCounts, 0, boxesMemSize);
+    populateParticleID<<<blks, NUM_THREADS>>>(gpu_parts, num_parts, gpu_boxCounts, gpu_prefixSums, gpu_particle_ids, numBoxes1D, boxSize1D);
+    cudaDeviceSynchronize();
 
     // printAssignmentStats(cpu_parts);
 }
@@ -252,26 +286,19 @@ void init_simulation(particle_t* parts, int num_parts, double size) {
     totalBoxes = numBoxes1D * numBoxes1D;
     boxesMemSize = totalBoxes * sizeof(int);
     prefixMemSize = (totalBoxes + 1) * sizeof(int);
-    //particle_idMemSize = num_parts * sizeof(particle_t);
     particle_idMemSize = num_parts * sizeof(int);
 
     // Allocate memory for CPU-side arrays
     boxCounts = new int[totalBoxes]();
     prefixSums = new int[totalBoxes + 1];
     particle_ids = new int[num_parts];
-    // boxes = new int[totalBoxes];
 
     // Allocate memory for GPU-side arrays and copy from CPU-side arrays
     cudaMalloc((void**)&gpu_boxCounts, boxesMemSize);
-    cudaMemset(gpu_boxCounts, 0, boxesMemSize);
-    // cudaMemcpy(gpu_boxCounts, boxCounts, boxesMemSize, cudaMemcpyHostToDevice);
-
     cudaMalloc((void**)&gpu_prefixSums, prefixMemSize);
+    cudaMalloc((void**)&gpu_particle_ids, particle_idMemSize);
 
-    cudaMalloc((void**)&gpu_particle_ids, num_parts * sizeof(int));
-
-    // cudaMalloc((void**)&gpu_boxes, boxesMemSize);
-    printf("Numboxes1d: %i. totalBoxes: %i\n", numBoxes1D, totalBoxes);
+    // printf("Numboxes1d: %i. totalBoxes: %i\n", numBoxes1D, totalBoxes);
 }
 
 void simulate_one_step(particle_t* parts, int num_parts, double size) {
@@ -279,10 +306,10 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
     // Rewrite this function
 
     // Assign all particles to boxes
-    assignToBoxes(parts, num_parts);
+    assignToBoxes(parts, num_parts, gpu_boxCounts, gpu_prefixSums, gpu_particle_ids);
 
     // Copy CPU arrays that were updated by assignToBoxes to GPU
-    copyArraysToGPU();
+    // copyArraysToGPU();
 
     // Compute forces
     compute_forces_gpu<<<blks, NUM_THREADS>>>(parts, num_parts, gpu_particle_ids, gpu_prefixSums, numBoxes1D, boxSize1D);
