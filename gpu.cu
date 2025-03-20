@@ -167,8 +167,6 @@ __global__ void compute_forces_move(particle_t* particles, int num_parts, int* p
     }
 }
 
-}
-
 __global__ void move_gpu(particle_t* particles, int num_parts, double size) {
 
     // Get thread (particle) ID
