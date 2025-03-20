@@ -353,4 +353,4 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
     // Move particles
 //     move_gpu<<<blks, NUM_THREADS>>>(parts, num_parts, size);
     compute_forces_move<<<blks, NUM_THREADS>>>(parts, num_parts, gpu_particle_ids, gpu_prefixSums, numBoxes1D, boxSize1D,size);
-// }
+}
