@@ -151,11 +151,19 @@ __global__ void compute_forces_gpu(particle_t* particles, int num_parts, int* pa
                 int startIdx = prefixSums[boxIndex];
                 int endIdx = prefixSums[boxIndex + 1];
 
-                for (int i = startIdx; i < endIdx; ++i) {
-                    int parts_idx = particle_ids[i];
-                    //particle_t& neighbor = particles[parts_idx];
-                    apply_force_gpu(thisParticle, particles[parts_idx]);
+                int numBinParts = endIdx - startIdx;
+                for (int i = threadIdx.x; i < numBinParts; i += blockDim.x) {
+                    sharedParticles[i] = particles[particle_ids[startIdx + i]];
                 }
+
+                __syncthreads();
+
+                for (int i = 0; i < numBinParts; i++) {
+                    //particle_t& neighbor = particles[parts_idx];
+                    apply_force_gpu(thisParticle, sharedParticles[i]);
+                }
+
+                 __syncthreads();
             }
         }
     }
