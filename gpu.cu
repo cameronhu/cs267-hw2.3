@@ -103,9 +103,9 @@ __global__ void compute_forces_gpu(particle_t* particles, int num_parts, int* pa
     int tid_in_box = threadIdx.x;
     int start = prefixSums[box_idx];
     int end = prefixSums[box_idx + 1];
-    int num_parts = end - start;
+    int num_parts_box = end - start;
 
-    if (tid_in_box >= num_parts)
+    if (tid_in_box >= num_parts_box)
         return;
 
     int part_idx = particle_ids[start + tid_in_box];
@@ -397,8 +397,8 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
     // Copy CPU arrays that were updated by assignToBoxes to GPU
     // copyArraysToGPU();
 
-    dim3 grid(numBoxes1D, numBoxes1D)
-    dim3 block(NUM_THREADS)
+    dim3 grid(numBoxes1D, numBoxes1D);
+    dim3 block(NUM_THREADS);
     // Compute forces
     compute_forces_gpu<<<grid,block>>>(parts, num_parts, gpu_particle_ids, gpu_prefixSums, numBoxes1D, boxSize1D);
 
