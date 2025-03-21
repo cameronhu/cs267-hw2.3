@@ -15,15 +15,13 @@ int blks;
 double boxSize1D = cutoff;
 int numBoxes1D;
 int totalBoxes;
-size_t boxesMemSize;
-size_t prefixMemSize;
-size_t particle_idMemSize;
+size_t boxPrefixMemSize;
 
 // ============ Array pointers for boxes and particle_idx ============
 
 // CPU arrays
-// int* boxCounts;
-// int* prefixSums;
+int* boxCounts;
+int* prefixSums;
 int* boxPrefix
 int* particle_ids;
 
@@ -344,6 +342,6 @@ void simulate_one_step(particle_t* gpu_parts, int num_parts, double size) {
     compute_forces_gpu<<<blks, NUM_THREADS>>>(gpu_parts, num_parts, gpu_particle_ids, gpu_boxPrefix, numBoxes1D, boxSize1D);
 
     // Move particles
-    move_gpu<<<blks, NUM_THREADS>>>(parts, num_parts, size);
+    move_gpu<<<blks, NUM_THREADS>>>(gpu_parts, num_parts, size);
     cudaDeviceSynchronize();
 }
