@@ -143,8 +143,8 @@ __global__ void compute_forces_gpu(particle_t* particles, int num_parts, int* pa
 
     for (int rowOffset = -1; rowOffset <= 1; rowOffset++){
         for (int colOffset = -1; colOffset <=1; colOffset++){
-            int rNeighbor = row + rowOffset
-            int cNeighbor = col + colOffset
+            int rNeighbor = row + rowOffset;
+            int cNeighbor = col + colOffset;
 
             if (rNeighbor >= 0 && rNeighbor < numBoxes1D && cNeighbor >= 0 && cNeighbor < numBoxes1D) {
                 int boxIndex = INDEX(rNeighbor, cNeighbor);
