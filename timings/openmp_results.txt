@@ -1,5 +1,5 @@
 Simulation Time = 0.0207857 seconds for 1000 particles.
 Simulation Time = 0.0990141 seconds for 10000 particles.
-srun: Step created for StepId=37086641.2
 Simulation Time = 0.673888 seconds for 100000 particles.
 Simulation Time = 10.4026 seconds for 1000000 particles.
+Simulation Time = 79.0309 seconds for 10000000 particles.

@@ -8,3 +8,5 @@ Communication: 0.121947. Computation: 0.000105. Synchronization: 0.166800
 srun: Step created for StepId=37086680.3
 NumProcs = 64. Simulation Time = 0.444415 seconds for 1000000 particles.
 Communication: 0.121985. Computation: 0.000140. Synchronization: 0.399800
+NumProcs = 64. Simulation Time = 2.07737 seconds for 10000000 particles.
+Communication: 0.124713. Computation: 0.000098. Synchronization: 2.672540
