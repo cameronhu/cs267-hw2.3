@@ -1,0 +1,5 @@
+Simulation Time = 0.0816882 seconds for 1000 particles.
+Simulation Time = 0.0854442 seconds for 10000 particles.
+Simulation Time = 0.127657 seconds for 100000 particles.
+Simulation Time = 1.49235 seconds for 1000000 particles.
+Simulation Time = 15.6889 seconds for 10000000 particles.
