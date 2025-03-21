@@ -95,53 +95,6 @@ __device__ void apply_force_from_neighbor_gpu(int row, int col, particle_t& this
         }
     }
 }
-__global__ void compute_forces_gpu(particle_t* particles, int num_parts, int* particle_ids, int* prefixSums, int numBoxes1D, double boxSize1D){
-    int box_row = blockIdx.y;
-    int box_col = blockIdx.x;
-    int box_idx = INDEX(box_row, box_col);
-
-    int tid_in_box = threadIdx.x;
-    int start = prefixSums[box_idx];
-    int end = prefixSums[box_idx + 1];
-    int num_parts_box = end - start;
-
-    if (tid_in_box >= num_parts_box)
-        return;
-
-    int part_idx = particle_ids[start + tid_in_box];
-    particle_t& thisParticle = particles[part_idx];
-    thisParticle.ax = thisParticle.ay = 0;
-
-    __shared__ particle_t sharedParticles[NUM_THREADS];
-
-    for (int dr = -1; dr <= 1; dr++) {
-        for (int dc = -1; dc <= 1; dc++) {
-            int nrow = box_row + dr;
-            int ncol = box_col + dc;
-
-            // Check if neighbor bin is out of bounds
-            if (nrow < 0 || nrow >= numBoxes1D || ncol < 0 || ncol >= numBoxes1D)
-                continue;
-
-            int nidx = INDEX(nrow, ncol);
-            int nstart = prefixSums[nidx];
-            int nend = prefixSums[nidx + 1];
-            int numBinParts = nend - nstart;
-
-            for (int i = threadIdx.x; i < numBinParts; i += blockDim.x) {
-                sharedParticles[i] = particles[particle_ids[nstart + i]];
-            }
-            __syncthreads();
-
-            // Compute forces using shared memory
-            for (int i = 0; i < numBinParts; i++) {
-                apply_force_gpu(thisParticle, sharedParticles[i]);
-            }
-            __syncthreads();
-        }
-    }
-
-}
 
 // __global__ void compute_forces_gpu(particle_t* particles, int num_parts, int* particle_ids, int* prefixSums, int numBoxes1D, double boxSize1D) {
 //     // Get thread (particle) ID
@@ -174,53 +127,53 @@ __global__ void compute_forces_gpu(particle_t* particles, int num_parts, int* pa
 //     apply_force_from_neighbor_gpu(row, col, thisParticle, particles, particle_ids, prefixSums, numBoxes1D, boxSize1D);         // Self
 // }
 
-// __global__ void compute_forces_gpu(particle_t* particles, int num_parts, int* particle_ids, int* prefixSums, int numBoxes1D, double boxSize1D){
-//     int tid = threadIdx.x + blockIdx.x * blockDim.x;
-//     if (tid >= num_parts)
-//         return;
+__global__ void compute_forces_gpu(particle_t* particles, int num_parts, int* particle_ids, int* prefixSums, int numBoxes1D, double boxSize1D){
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    if (tid >= num_parts)
+        return;
 
-//     int idx = particle_ids[tid];
-//     particle_t& thisParticle = particles[idx];
-//     thisParticle.ax = thisParticle.ay = 0;
+    int idx = particle_ids[tid];
+    particle_t& thisParticle = particles[idx];
+    thisParticle.ax = thisParticle.ay = 0;
 
-//     int row = findRow(thisParticle, boxSize1D);
-//     int col = findCol(thisParticle, boxSize1D);
+    int row = findRow(thisParticle, boxSize1D);
+    int col = findCol(thisParticle, boxSize1D);
 
-//     __shared__ particle_t sharedParticles[NUM_THREADS];
+    __shared__ particle_t sharedParticles[NUM_THREADS];
 
-//     for (int rowOffset = -1; rowOffset <= 1; rowOffset++){
-//         for (int colOffset = -1; colOffset <=1; colOffset++){
-//             int rNeighbor = row + rowOffset;
-//             int cNeighbor = col + colOffset;
+    for (int rowOffset = -1; rowOffset <= 1; rowOffset++){
+        for (int colOffset = -1; colOffset <=1; colOffset++){
+            int rNeighbor = row + rowOffset;
+            int cNeighbor = col + colOffset;
 
-//             if (rNeighbor >= 0 && rNeighbor < numBoxes1D && cNeighbor >= 0 && cNeighbor < numBoxes1D) {
-//                 int boxIndex = INDEX(rNeighbor, cNeighbor);
-//                 int startIdx = prefixSums[boxIndex];
-//                 int endIdx = prefixSums[boxIndex + 1];
+            if (rNeighbor >= 0 && rNeighbor < numBoxes1D && cNeighbor >= 0 && cNeighbor < numBoxes1D) {
+                int boxIndex = INDEX(rNeighbor, cNeighbor);
+                int startIdx = prefixSums[boxIndex];
+                int endIdx = prefixSums[boxIndex + 1];
 
-//                 int numBinParts = endIdx - startIdx;
-//                 for (int i = threadIdx.x; i < numBinParts; i += blockDim.x) {
-//                     sharedParticles[i] = particles[particle_ids[startIdx + i]];
-//                 }
+                int numBinParts = endIdx - startIdx;
+                for (int i = threadIdx.x; i < numBinParts; i += blockDim.x) {
+                    sharedParticles[i] = particles[particle_ids[startIdx + i]];
+                }
 
-//                 __syncthreads();
+                __syncthreads();
 
-//                 for (int i = 0; i < numBinParts; i++) {
-//                     //particle_t& neighbor = particles[parts_idx];
-//                     apply_force_gpu(thisParticle, sharedParticles[i]);
-//                 }
+                for (int i = 0; i < numBinParts; i++) {
+                    //particle_t& neighbor = particles[parts_idx];
+                    apply_force_gpu(thisParticle, sharedParticles[i]);
+                }
 
-//                  __syncthreads();
-//             }
-//         }
-//     }
+                
+            }
+        }
+    }
 
-// }
+}
 
 __global__ void move_gpu(particle_t* particles, int num_parts, double size) {
 
     // Get thread (particle) ID
-    int tid = threadIdx.x + blockIdx.y * gridDim.x + blockIdx.x * blockDim.x;
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
     if (tid >= num_parts)
         return;
 
@@ -397,11 +350,9 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
     // Copy CPU arrays that were updated by assignToBoxes to GPU
     // copyArraysToGPU();
 
-    dim3 grid(numBoxes1D, numBoxes1D);
-    dim3 block(NUM_THREADS);
     // Compute forces
-    compute_forces_gpu<<<grid,block>>>(parts, num_parts, gpu_particle_ids, gpu_prefixSums, numBoxes1D, boxSize1D);
+    compute_forces_gpu<<<blks, NUM_THREADS>>>(parts, num_parts, gpu_particle_ids, gpu_prefixSums, numBoxes1D, boxSize1D);
 
     // Move particles
-    move_gpu<<<grid,block>>>(parts, num_parts, size);
+    move_gpu<<<blks, NUM_THREADS>>>(parts, num_parts, size);
 }
