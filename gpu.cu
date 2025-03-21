@@ -302,7 +302,7 @@ void assignToBoxes(particle_t* gpu_parts, int num_parts, int* gpu_boxPrefix, int
     // cudaMemcpy(prefixSums, gpu_prefixSums, prefixMemSize, cudaMemcpyDeviceToHost);
 
     // Reset gpu_boxCounts for populateParticleID
-    cudaMemset(gpu_boxCounts, 0, boxesMemSize);
+    cudaMemset(gpu_boxPrefix, 0, boxesMemSize);
     populateParticleID<<<blks, NUM_THREADS>>>(gpu_parts, num_parts,gpu_boxPrefix , gpu_particle_ids, numBoxes1D, boxSize1D);
     cudaDeviceSynchronize();
 
@@ -312,7 +312,7 @@ void assignToBoxes(particle_t* gpu_parts, int num_parts, int* gpu_boxPrefix, int
 // Copies data from CPU particle_id and prefixSums to mirrored arrs on GPU
 void copyArraysToGPU() {
     cudaMemcpy(gpu_particle_ids, particle_ids, particle_idMemSize, cudaMemcpyHostToDevice);
-    cudaMemcpy(gpu_prefixSums, prefixSums, prefixMemSize, cudaMemcpyHostToDevice);
+    // cudaMemcpy(gpu_prefixSums, prefixSums, prefixMemSize, cudaMemcpyHostToDevice);
 }
 
 void init_simulation(particle_t* parts, int num_parts, double size) {
@@ -354,7 +354,7 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
     // copyArraysToGPU();
 
     // Compute forces
-    compute_forces_gpu<<<blks, NUM_THREADS>>>(parts, num_parts, gpu_particle_ids,gpu_boxPrefix numBoxes1D, boxSize1D);
+    compute_forces_gpu<<<blks, NUM_THREADS>>>(parts, num_parts, gpu_particle_ids,gpu_boxPrefix, numBoxes1D, boxSize1D);
 
     // Move particles
     move_gpu<<<blks, NUM_THREADS>>>(parts, num_parts, size);
