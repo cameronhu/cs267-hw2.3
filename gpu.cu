@@ -241,7 +241,7 @@ __global__ void populateParticleID(particle_t* gpu_parts, int num_parts, int* gp
         return;
 
     int boxIndex = findBox(gpu_parts[tid], numBoxes1D, boxSize1D);
-    int pos = atomicAdd(&gpu_boxPrefix + boxIndex, 1);
+    int pos = atomicAdd(gpu_boxPrefix + boxIndex, 1);
     gpu_particle_ids[pos] = tid;
 }
 
